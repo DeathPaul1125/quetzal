@@ -150,14 +150,14 @@ class adminController extends Controller implements ControllerInterface
     $this->setTitle('Apariencia del sistema');
     $this->addToData('colors', theme_colors());
     $this->addToData('presets', [
-      ['label' => 'Ámbar (default)', 'primary' => '#f59e0b', 'dark' => '#b45309'],
-      ['label' => 'Azul',            'primary' => '#3b82f6', 'dark' => '#1d4ed8'],
-      ['label' => 'Esmeralda',       'primary' => '#10b981', 'dark' => '#047857'],
-      ['label' => 'Violeta',         'primary' => '#8b5cf6', 'dark' => '#6d28d9'],
-      ['label' => 'Rosa',            'primary' => '#ec4899', 'dark' => '#be185d'],
-      ['label' => 'Rojo',            'primary' => '#ef4444', 'dark' => '#b91c1c'],
-      ['label' => 'Cian',            'primary' => '#06b6d4', 'dark' => '#0e7490'],
-      ['label' => 'Slate',           'primary' => '#475569', 'dark' => '#1e293b'],
+      ['label' => 'Guatemala (default)', 'primary' => '#4997D0', 'dark' => '#2D6CA3'],
+      ['label' => 'Verde quetzal',       'primary' => '#059669', 'dark' => '#065f46'],
+      ['label' => 'Rojo quetzal',        'primary' => '#B91C1C', 'dark' => '#7F1D1D'],
+      ['label' => 'Ámbar',               'primary' => '#f59e0b', 'dark' => '#b45309'],
+      ['label' => 'Azul',                'primary' => '#3b82f6', 'dark' => '#1d4ed8'],
+      ['label' => 'Violeta',             'primary' => '#8b5cf6', 'dark' => '#6d28d9'],
+      ['label' => 'Rosa',                'primary' => '#ec4899', 'dark' => '#be185d'],
+      ['label' => 'Slate',               'primary' => '#475569', 'dark' => '#1e293b'],
     ]);
     $this->setView('apariencia');
     $this->render();

@@ -43,14 +43,15 @@ $showDemoHints = (function_exists('is_demo') && is_demo()) || (function_exists('
 <body class="h-full min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-800 antialiased">
 
 <div class="min-h-screen grid lg:grid-cols-2">
-  <div class="hidden lg:flex flex-col items-center justify-center p-10"
+  <div class="hidden lg:flex flex-col items-center justify-center p-10 relative overflow-hidden"
        style="background: linear-gradient(135deg, <?php echo $colors['primary']; ?> 0%, <?php echo $colors['primary_dark']; ?> 100%);">
-    <div class="text-center text-white max-w-md">
-      <img src="<?php echo get_quetzal_logo(); ?>" alt="<?php echo $siteName; ?>" class="w-24 h-24 mx-auto mb-6 bg-white/10 rounded-xl p-3 backdrop-blur">
+    <div class="absolute inset-0 opacity-[0.07]" style="background-image: radial-gradient(circle at 20% 30%, #fff 1px, transparent 2px), radial-gradient(circle at 80% 70%, #fff 1px, transparent 2px); background-size: 40px 40px;"></div>
+    <div class="relative text-center text-white max-w-md">
+      <img src="<?php echo get_quetzal_logo(); ?>" alt="<?php echo $siteName; ?>" class="w-28 h-28 mx-auto mb-6 bg-white/15 rounded-2xl p-3 backdrop-blur ring-1 ring-white/20">
       <h1 class="text-3xl font-bold mb-3"><?php echo $siteName; ?></h1>
-      <p class="opacity-90 leading-relaxed">Framework PHP ligero, flexible y fácil de implementar.</p>
+      <p class="opacity-90 leading-relaxed"><?php echo (defined('SITE_DESC') && SITE_DESC) ? htmlspecialchars(SITE_DESC) : 'Framework PHP ligero, flexible y fácil de implementar.'; ?></p>
       <div class="mt-8 text-xs opacity-75">
-        <?php echo defined('QUETZAL_NAME') ? QUETZAL_NAME : 'Quetzal'; ?> v<?php echo defined('QUETZAL_VERSION') ? QUETZAL_VERSION : ''; ?>
+        Powered by <?php echo defined('QUETZAL_NAME') ? QUETZAL_NAME : 'Quetzal'; ?> v<?php echo defined('QUETZAL_VERSION') ? QUETZAL_VERSION : ''; ?>
       </div>
     </div>
   </div>

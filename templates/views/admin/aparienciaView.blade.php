@@ -127,10 +127,10 @@
     });
   });
 
-  // Reset
+  // Reset (valores Guatemala por defecto)
   document.getElementById('reset-defaults')?.addEventListener('click', () => {
     if (!confirm('¿Restaurar los colores por defecto?')) return;
-    const defaults = { primary:'#f59e0b', primary_dark:'#b45309', sidebar_bg:'#1f2937', sidebar_fg:'#e5e7eb' };
+    const defaults = { primary:'#4997D0', primary_dark:'#2D6CA3', sidebar_bg:'#0F2E5C', sidebar_fg:'#e5e7eb' };
     Object.entries(defaults).forEach(([key, val]) => {
       const picker = form.querySelector(`input[type=color][name="${key}"]`);
       const hex    = document.getElementById(`${key}-hex`);

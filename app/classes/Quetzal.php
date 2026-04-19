@@ -202,7 +202,7 @@ class Quetzal
   {
     $this->framework = 'Quetzal';
     $this->version   = '1.6.0';
-    $this->logo      = 'quetzal_logo.png';
+    $this->logo      = 'quetzal.svg';
     $this->lng       = 'es';
 
     define('QUETZAL_NAME'      , $this->framework);

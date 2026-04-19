@@ -39,16 +39,20 @@
 <div class="min-h-screen grid lg:grid-cols-2">
 
   {{-- Panel izquierdo decorativo (solo desktop) --}}
-  <div class="hidden lg:flex flex-col items-center justify-center p-10"
+  <div class="hidden lg:flex flex-col items-center justify-center p-10 relative overflow-hidden"
        style="background: linear-gradient(135deg, {{ $colors['primary'] }} 0%, {{ $colors['primary_dark'] }} 100%);">
-    <div class="text-center text-white max-w-md">
-      <img src="{{ get_quetzal_logo() }}" alt="{{ defined('SITE_NAME') ? SITE_NAME : 'Quetzal' }}" class="w-24 h-24 mx-auto mb-6 bg-white/10 rounded-xl p-3 backdrop-blur">
+
+    {{-- Patrón decorativo sutil --}}
+    <div class="absolute inset-0 opacity-[0.07]" style="background-image: radial-gradient(circle at 20% 30%, #fff 1px, transparent 2px), radial-gradient(circle at 80% 70%, #fff 1px, transparent 2px); background-size: 40px 40px;"></div>
+
+    <div class="relative text-center text-white max-w-md">
+      <img src="{{ get_quetzal_logo() }}" alt="{{ defined('SITE_NAME') ? SITE_NAME : 'Quetzal' }}" class="w-28 h-28 mx-auto mb-6 bg-white/15 rounded-2xl p-3 backdrop-blur ring-1 ring-white/20">
       <h1 class="text-3xl font-bold mb-3">{{ defined('SITE_NAME') ? SITE_NAME : 'Quetzal' }}</h1>
       <p class="opacity-90 leading-relaxed">
-        Framework PHP ligero, flexible y fácil de implementar.
+        {{ (defined('SITE_DESC') && SITE_DESC) ? SITE_DESC : 'Framework PHP ligero, flexible y fácil de implementar.' }}
       </p>
       <div class="mt-8 text-xs opacity-75">
-        {{ defined('QUETZAL_NAME') ? QUETZAL_NAME : 'Quetzal' }} v{{ defined('QUETZAL_VERSION') ? QUETZAL_VERSION : '' }}
+        Powered by {{ defined('QUETZAL_NAME') ? QUETZAL_NAME : 'Quetzal' }} v{{ defined('QUETZAL_VERSION') ? QUETZAL_VERSION : '' }}
       </div>
     </div>
   </div>

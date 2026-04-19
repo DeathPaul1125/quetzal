@@ -271,19 +271,41 @@ function save_option(string $option, $val)
 }
 
 /**
+ * Paleta por defecto del tema: colores inspirados en Guatemala (celeste
+ * bandera + acentos del quetzal). Cada valor puede sobrescribirse por
+ * una opción en DB bajo la key "theme_<clave>".
+ *
+ * @return array<string,string>
+ */
+function theme_default_palette(): array
+{
+	return [
+		// Azul celeste bandera de Guatemala
+		'primary'      => '#4997D0',
+		'primary_dark' => '#2D6CA3',
+		// Navy profundo para el sidebar (armoniza con el celeste)
+		'sidebar_bg'   => '#0F2E5C',
+		'sidebar_fg'   => '#e5e7eb',
+	];
+}
+
+/**
  * Retorna el color del tema guardado en options con un fallback seguro.
  * Los colores se almacenan en options bajo keys "theme_*".
  *
  * @param string $key  Clave sin prefijo (ej. 'primary', 'primary_dark', 'sidebar')
- * @param string $fallback Hex por defecto si no existe la opción
+ * @param string|null $fallback Hex por defecto si no existe la opción (si null, usa palette)
  * @return string
  */
-function theme_color(string $key = 'primary', string $fallback = '#f59e0b'): string
+function theme_color(string $key = 'primary', ?string $fallback = null): string
 {
 	static $cache = null;
 	if ($cache === null) $cache = [];
 
 	if (isset($cache[$key])) return $cache[$key];
+
+	$palette = theme_default_palette();
+	$fallback = $fallback ?? ($palette[$key] ?? '#4997D0');
 
 	$stored = get_option('theme_' . $key);
 	$color  = (is_string($stored) && preg_match('/^#[0-9a-f]{3,8}$/i', $stored)) ? $stored : $fallback;
@@ -299,11 +321,12 @@ function theme_color(string $key = 'primary', string $fallback = '#f59e0b'): str
  */
 function theme_colors(): array
 {
+	$palette = theme_default_palette();
 	return [
-		'primary'      => theme_color('primary'     , '#f59e0b'),
-		'primary_dark' => theme_color('primary_dark', '#b45309'),
-		'sidebar_bg'   => theme_color('sidebar_bg'  , '#1f2937'),
-		'sidebar_fg'   => theme_color('sidebar_fg'  , '#e5e7eb'),
+		'primary'      => theme_color('primary'     , $palette['primary']),
+		'primary_dark' => theme_color('primary_dark', $palette['primary_dark']),
+		'sidebar_bg'   => theme_color('sidebar_bg'  , $palette['sidebar_bg']),
+		'sidebar_fg'   => theme_color('sidebar_fg'  , $palette['sidebar_fg']),
 	];
 }
 
