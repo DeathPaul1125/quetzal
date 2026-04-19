@@ -196,6 +196,158 @@ class adminController extends Controller implements ControllerInterface
   }
 
   ////////////////////////////////////////////////////
+  //////// MIGRACIONES
+  ////////////////////////////////////////////////////
+
+  /**
+   * Retorna la conexión PDO reusando la config del framework.
+   */
+  private function getPdo(): PDO
+  {
+    $dsn = sprintf('mysql:host=%s;dbname=%s;charset=utf8mb4', DB_HOST, DB_NAME);
+    return new PDO($dsn, DB_USER, DB_PASS, [
+      PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+      PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4"
+    ]);
+  }
+
+  /**
+   * Construye el tracking table name que usa QuetzalPluginManager para cada plugin.
+   */
+  private function pluginTrackingTable(string $pluginName): string
+  {
+    return 'plugin_' . strtolower(preg_replace('/[^a-zA-Z0-9_]/', '_', $pluginName)) . '_migrations';
+  }
+
+  /**
+   * Vista de migraciones: muestra estado del core + cada plugin habilitado.
+   */
+  function migraciones()
+  {
+    $this->guardAdminAccess();
+
+    try {
+      $pdo = $this->getPdo();
+
+      // Core
+      $coreMigrator = new Migrator($pdo, ROOT . 'app' . DS . 'migrations');
+      $coreStatus   = $coreMigrator->status();
+      $coreSummary  = $coreMigrator->summary();
+
+      // Plugins habilitados
+      $plugins = [];
+      foreach (QuetzalPluginManager::getInstance()->getEnabled() as $plugin) {
+        $migDir = $plugin['path'] . 'migrations';
+        if (!is_dir($migDir)) continue;
+
+        $trackingTable = $this->pluginTrackingTable($plugin['name']);
+        $m             = new Migrator($pdo, $migDir, $trackingTable);
+        $plugins[]     = [
+          'name'    => $plugin['name'],
+          'version' => $plugin['version'] ?? '',
+          'status'  => $m->status(),
+          'summary' => $m->summary(),
+        ];
+      }
+
+      $this->setTitle('Migraciones');
+      $this->addToData('coreStatus' , $coreStatus);
+      $this->addToData('coreSummary', $coreSummary);
+      $this->addToData('plugins'    , $plugins);
+      $this->setView('migraciones');
+      $this->render();
+
+    } catch (Exception $e) {
+      Flasher::error('Error al cargar migraciones: ' . $e->getMessage());
+      Redirect::to('admin');
+    }
+  }
+
+  /**
+   * Ejecuta las migraciones pendientes del target ('core' o un plugin).
+   */
+  function post_migrate()
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $target = sanitize_input($_POST['target'] ?? 'core');
+      $pdo    = $this->getPdo();
+      $log    = [];
+
+      if ($target === 'core') {
+        $migrator = new Migrator($pdo, ROOT . 'app' . DS . 'migrations');
+        $log      = $migrator->run();
+      } else {
+        $log = QuetzalPluginManager::getInstance()->migrate($pdo, $target);
+      }
+
+      $ok     = array_filter($log, fn($r) => $r['status'] === 'ok');
+      $errors = array_filter($log, fn($r) => $r['status'] === 'error');
+
+      if (count($errors)) {
+        Flasher::error(sprintf('%d migración(es) fallaron. Primer error: %s', count($errors), reset($errors)['message']));
+      } elseif (count($ok)) {
+        Flasher::success(sprintf('%d migración(es) ejecutadas en <b>%s</b>.', count($ok), $target));
+      } else {
+        Flasher::new(sprintf('No hay migraciones pendientes en <b>%s</b>.', $target), 'info');
+      }
+
+      Redirect::to('admin/migraciones');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
+  /**
+   * Rollback del último batch del target.
+   */
+  function post_rollback()
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $target = sanitize_input($_POST['target'] ?? 'core');
+      $steps  = max(1, (int) ($_POST['steps'] ?? 1));
+      $pdo    = $this->getPdo();
+
+      if ($target === 'core') {
+        $migrator = new Migrator($pdo, ROOT . 'app' . DS . 'migrations');
+      } else {
+        $manifest = QuetzalPluginManager::getInstance()->discover()[$target] ?? null;
+        if (!$manifest) throw new Exception('Plugin no encontrado: ' . $target);
+        $migrator = new Migrator($pdo, $manifest['path'] . 'migrations', $this->pluginTrackingTable($target));
+      }
+
+      $log     = $migrator->rollback($steps);
+      $ok      = array_filter($log, fn($r) => $r['status'] === 'ok');
+      $errors  = array_filter($log, fn($r) => $r['status'] === 'error');
+
+      if (count($errors)) {
+        Flasher::error(sprintf('Rollback parcial: %d fallaron. Primer error: %s', count($errors), reset($errors)['message']));
+      } elseif (count($ok)) {
+        Flasher::success(sprintf('%d migración(es) revertidas en <b>%s</b>.', count($ok), $target));
+      } else {
+        Flasher::new('Nada que revertir.', 'info');
+      }
+
+      Redirect::to('admin/migraciones');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
+  ////////////////////////////////////////////////////
   //////// ROLES Y PERMISOS
   ////////////////////////////////////////////////////
 

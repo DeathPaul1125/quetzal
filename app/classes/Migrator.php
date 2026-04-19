@@ -166,18 +166,74 @@ class Migrator
     }
 
     /**
-     * Estado de migraciones: cuáles corridas, cuáles no.
+     * Estado detallado de migraciones. Retorna cada migración descubierta
+     * con su estado, batch y timestamp de ejecución (si aplica).
+     *
+     * @return array<int, array{name:string, status:string, batch:?int, executed_at:?string}>
      */
     public function status(): array
     {
         $this->ensureTrackingTable();
-        $executed   = array_flip($this->executed());
+
+        // Carga info detallada de las migraciones corridas: name → [batch, executed_at]
+        $ranMap = [];
+        $stmt = $this->pdo->query('SELECT migration, batch, executed_at FROM `' . $this->trackingTable . '` ORDER BY id ASC');
+        if ($stmt) {
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $ranMap[$r['migration']] = $r;
+            }
+        }
+
         $discovered = $this->discover();
         $out = [];
+
         foreach ($discovered as $name => $_) {
-            $out[] = ['name' => $name, 'status' => isset($executed[$name]) ? 'ran' : 'pending'];
+            if (isset($ranMap[$name])) {
+                $out[] = [
+                    'name'        => $name,
+                    'status'      => 'ran',
+                    'batch'       => (int) $ranMap[$name]['batch'],
+                    'executed_at' => $ranMap[$name]['executed_at'],
+                ];
+            } else {
+                $out[] = [
+                    'name'        => $name,
+                    'status'      => 'pending',
+                    'batch'       => null,
+                    'executed_at' => null,
+                ];
+            }
         }
+
+        // Además incluimos migraciones corridas que ya no están en disco (archivo borrado)
+        foreach ($ranMap as $name => $r) {
+            if (!isset($discovered[$name])) {
+                $out[] = [
+                    'name'        => $name,
+                    'status'      => 'missing',
+                    'batch'       => (int) $r['batch'],
+                    'executed_at' => $r['executed_at'],
+                ];
+            }
+        }
+
         return $out;
+    }
+
+    /**
+     * Conteos rápidos para la UI.
+     */
+    public function summary(): array
+    {
+        $status = $this->status();
+        $counts = ['total' => count($status), 'ran' => 0, 'pending' => 0, 'missing' => 0, 'last_batch' => null];
+        foreach ($status as $s) {
+            $counts[$s['status']] = ($counts[$s['status']] ?? 0) + 1;
+            if ($s['batch'] !== null && ($counts['last_batch'] === null || $s['batch'] > $counts['last_batch'])) {
+                $counts['last_batch'] = $s['batch'];
+            }
+        }
+        return $counts;
     }
 
     protected function nextBatch(): int

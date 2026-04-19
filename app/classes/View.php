@@ -154,9 +154,18 @@ class View
   {
     $compiler = $this->bladeInstance->compiler();
 
-    // Directiva @csrf — imprime el input oculto con el token actual
+    // Directiva @csrf — emite los campos hidden que el framework Quetzal espera.
+    // IMPORTANTE: usa name="csrf" (NO "_t" de Laravel) porque Csrf::validate
+    // y los controllers legacy leen $_POST['csrf']. También incluye redirect_to
+    // y timecheck para compatibilidad con insert_inputs().
     $compiler->directive('csrf', function () {
-      return "<?php echo '<input type=\"hidden\" name=\"_t\" value=\"' . (defined('CSRF_TOKEN') ? CSRF_TOKEN : '') . '\">'; ?>";
+      return '<?php
+        $__q_loc = $_POST["redirect_to"] ?? $_GET["redirect_to"] ?? (defined("CUR_PAGE") ? CUR_PAGE : "");
+        $__q_tok = defined("CSRF_TOKEN") ? CSRF_TOKEN : "";
+        echo "<input type=\"hidden\" name=\"redirect_to\" value=\"" . htmlspecialchars($__q_loc, ENT_QUOTES) . "\">";
+        echo "<input type=\"hidden\" name=\"timecheck\" value=\"" . time() . "\">";
+        echo "<input type=\"hidden\" name=\"csrf\" value=\"" . htmlspecialchars($__q_tok, ENT_QUOTES) . "\">";
+      ?>';
     });
 
     // Directivas @auth / @guest
