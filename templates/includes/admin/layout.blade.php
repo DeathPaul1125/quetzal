@@ -41,6 +41,14 @@
     #q-sidebar a.active,
     #q-sidebar a:hover { background-color: rgba(255,255,255,.08); color: #fff; }
     #q-sidebar a.active { border-left: 3px solid var(--q-primary); }
+
+    /* Flasher (Bootstrap alerts) → estilo Tailwind-ish */
+    .alert { padding: .75rem 1rem; border-radius: .5rem; border: 1px solid; font-size: .875rem; display: flex; align-items: center; gap: .5rem; margin-bottom: 1rem; }
+    .alert-danger, .alert-error { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+    .alert-success { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+    .alert-warning { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+    .alert-info, .alert-primary { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
+    .alert .btn-close { display: none; }
   </style>
 
   @stack('head')
