@@ -293,6 +293,54 @@ class adminController extends Controller implements ControllerInterface
     );
   }
 
+  /**
+   * Reconstruye todos los plugins habilitados: limpia cache Blade,
+   * valida manifiestos/dependencias y ejecuta migraciones pendientes.
+   */
+  function post_plugin_rebuild()
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $pdo    = $this->getPdo();
+      $result = QuetzalPluginManager::getInstance()->rebuild($pdo);
+      $s      = $result['summary'];
+
+      // Resumen legible en el flash
+      $parts = [];
+      if ($s['cache_cleared']  > 0) $parts[] = sprintf('%d archivo(s) de cache limpiados', $s['cache_cleared']);
+      if ($s['validated']      > 0) $parts[] = sprintf('%d plugin(s) validado(s)', $s['validated']);
+      if ($s['migrated']       > 0) $parts[] = sprintf('%d migración(es) ejecutada(s)', $s['migrated']);
+      if ($s['skipped']        > 0) $parts[] = sprintf('%d tarea(s) sin cambios', $s['skipped']);
+
+      $hasErrors = ($s['validation_err'] + $s['migration_err']) > 0;
+
+      // Guardamos el log detallado en sesión para mostrarlo en la vista
+      $_SESSION['plugin_rebuild_log'] = $result;
+
+      if ($hasErrors) {
+        Flasher::error(sprintf(
+          'Reconstrucción con errores: %d validación(es) fallaron, %d migración(es) fallaron. %s',
+          $s['validation_err'], $s['migration_err'],
+          $parts ? '(' . implode(', ', $parts) . ')' : ''
+        ));
+      } elseif (empty($parts)) {
+        Flasher::new('No había nada que reconstruir — todo ya estaba al día.', 'info');
+      } else {
+        Flasher::success('Plugins reconstruidos: ' . implode(', ', $parts) . '.');
+      }
+
+      Redirect::to('admin/plugins');
+
+    } catch (Exception $e) {
+      Flasher::error('Error al reconstruir: ' . $e->getMessage());
+      Redirect::back();
+    }
+  }
+
   ////////////////////////////////////////////////////
   //////// MIGRACIONES
   ////////////////////////////////////////////////////

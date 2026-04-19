@@ -6,6 +6,72 @@
 @section('content')
 <div class="space-y-6">
 
+  {{-- Toolbar de acciones globales --}}
+  <div class="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between flex-wrap gap-3">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+        <i class="ri-plug-line text-primary text-xl"></i>
+      </div>
+      <div>
+        <h2 class="font-semibold text-slate-800">Plugins</h2>
+        <p class="text-xs text-slate-500">Gestiona, habilita y reconstruye los plugins del sistema.</p>
+      </div>
+    </div>
+    <form method="post" action="admin/post_plugin_rebuild" class="inline"
+          onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').innerHTML='<i class=\'ri-loader-4-line animate-spin\'></i> Reconstruyendo...';">
+      @csrf
+      <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg btn-primary text-sm font-semibold"
+              title="Limpia cache, valida manifiestos y ejecuta migraciones pendientes de todos los plugins habilitados">
+        <i class="ri-refresh-line"></i> Reconstruir plugins
+      </button>
+    </form>
+  </div>
+
+  {{-- Log del último rebuild (si existe en sesión) --}}
+  @if(!empty($_SESSION['plugin_rebuild_log']))
+    @php
+      $log = $_SESSION['plugin_rebuild_log'];
+      unset($_SESSION['plugin_rebuild_log']);
+      $hasErr = ($log['summary']['validation_err'] ?? 0) + ($log['summary']['migration_err'] ?? 0) > 0;
+    @endphp
+    <details class="bg-white rounded-xl border {{ $hasErr ? 'border-red-200' : 'border-emerald-200' }} overflow-hidden" open>
+      <summary class="cursor-pointer px-5 py-3 {{ $hasErr ? 'bg-red-50' : 'bg-emerald-50' }} flex items-center justify-between gap-2 list-none">
+        <div class="flex items-center gap-2 text-sm font-medium {{ $hasErr ? 'text-red-800' : 'text-emerald-800' }}">
+          <i class="{{ $hasErr ? 'ri-error-warning-line' : 'ri-checkbox-circle-line' }}"></i>
+          Log de la última reconstrucción ({{ count($log['steps']) }} pasos)
+        </div>
+        <i class="ri-arrow-down-s-line text-slate-500"></i>
+      </summary>
+      <ul class="divide-y divide-slate-100 text-sm">
+        @foreach($log['steps'] as $step)
+          @php
+            $icon = match($step['status']) {
+              'ok'      => 'ri-check-line text-emerald-600',
+              'error'   => 'ri-close-line text-red-600',
+              'partial' => 'ri-alert-line text-amber-600',
+              default   => 'ri-subtract-line text-slate-400',
+            };
+            $label = match($step['step']) {
+              'cache'    => 'Cache',
+              'validate' => 'Validación',
+              'migrate'  => 'Migración',
+              default    => ucfirst($step['step']),
+            };
+          @endphp
+          <li class="px-5 py-2.5 flex items-start gap-3">
+            <i class="{{ $icon }} mt-0.5"></i>
+            <div class="flex-1 min-w-0">
+              <div class="text-xs uppercase tracking-wider text-slate-400">
+                {{ $label }} @isset($step['plugin']) · <span class="font-mono">{{ $step['plugin'] }}</span>@endisset
+              </div>
+              <div class="text-slate-700 text-sm">{{ $step['message'] }}</div>
+            </div>
+          </li>
+        @endforeach
+      </ul>
+    </details>
+  @endif
+
   {{-- Resumen --}}
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
     <div class="bg-white rounded-xl border border-slate-200 p-5 flex items-center justify-between">

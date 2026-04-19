@@ -423,4 +423,150 @@ class QuetzalPluginManager
       }
     }
   }
+
+  /**
+   * Limpia el cache compilado de Blade (plantillas compiladas a PHP).
+   * Devuelve una entrada de log estandarizada.
+   */
+  public function clearBladeCache(): array
+  {
+    $cacheDir = defined('BLADE_CACHE') ? BLADE_CACHE : (ROOT . 'app' . DS . 'cache' . DS . 'blade');
+
+    if (!is_dir($cacheDir)) {
+      return ['step' => 'cache', 'status' => 'skipped', 'message' => 'El directorio de cache no existe.'];
+    }
+
+    $deleted = 0;
+    $errors  = 0;
+    foreach (glob($cacheDir . DS . '*.php') ?: [] as $file) {
+      if (@unlink($file)) $deleted++;
+      else $errors++;
+    }
+
+    return [
+      'step'    => 'cache',
+      'status'  => $errors === 0 ? 'ok' : 'partial',
+      'message' => sprintf('Cache Blade: %d archivo(s) eliminados%s.', $deleted, $errors ? ", $errors con error" : ''),
+      'deleted' => $deleted,
+      'errors'  => $errors,
+    ];
+  }
+
+  /**
+   * Reconstruye todos los plugins habilitados: limpia cache, valida
+   * manifiestos y dependencias, y ejecuta migraciones pendientes.
+   *
+   * Idempotente: correrlo varias veces es seguro. Solo procesa lo que
+   * aún no esté aplicado.
+   *
+   * @param PDO $pdo Conexión a la base de datos del framework.
+   * @return array{steps:array, summary:array} Log estructurado
+   */
+  public function rebuild(PDO $pdo): array
+  {
+    $steps   = [];
+    $counters = [
+      'cache_cleared'  => 0,
+      'validated'      => 0,
+      'validation_err' => 0,
+      'migrated'       => 0,
+      'migration_err'  => 0,
+      'skipped'        => 0,
+    ];
+
+    // 1. Limpiar cache Blade
+    $cacheStep = $this->clearBladeCache();
+    $counters['cache_cleared'] = $cacheStep['deleted'] ?? 0;
+    $steps[] = $cacheStep;
+
+    // 2. Para cada plugin habilitado: validar + migrar
+    foreach ($this->getEnabled() as $plugin) {
+      $name = $plugin['name'];
+
+      // 2a. Validación de compatibilidad
+      try {
+        $this->validateCompatibility($plugin);
+        $this->validateDependenciesEnabled($plugin);
+        $counters['validated']++;
+        $steps[] = [
+          'step'    => 'validate',
+          'plugin'  => $name,
+          'status'  => 'ok',
+          'message' => 'Manifiesto válido. Dependencias habilitadas.',
+        ];
+      } catch (Exception $e) {
+        $counters['validation_err']++;
+        $steps[] = [
+          'step'    => 'validate',
+          'plugin'  => $name,
+          'status'  => 'error',
+          'message' => $e->getMessage(),
+        ];
+        // No continuar con migraciones si la validación falló
+        continue;
+      }
+
+      // 2b. Migraciones del plugin
+      $migDir = $plugin['path'] . 'migrations';
+      if (!is_dir($migDir) || count(glob($migDir . DS . '*.php') ?: []) === 0) {
+        $counters['skipped']++;
+        $steps[] = [
+          'step'    => 'migrate',
+          'plugin'  => $name,
+          'status'  => 'skipped',
+          'message' => 'Sin migraciones en disco.',
+        ];
+        continue;
+      }
+
+      try {
+        $migLog = $this->migrate($pdo, $name);
+        $okCount   = count(array_filter($migLog, fn($r) => $r['status'] === 'ok'));
+        $errCount  = count(array_filter($migLog, fn($r) => $r['status'] === 'error'));
+
+        if ($errCount > 0) {
+          $counters['migration_err']++;
+          $firstErr = reset(array_filter($migLog, fn($r) => $r['status'] === 'error'));
+          $steps[] = [
+            'step'    => 'migrate',
+            'plugin'  => $name,
+            'status'  => 'error',
+            'message' => sprintf('%d migración(es) fallaron. Primer error: %s', $errCount, $firstErr['message'] ?? '—'),
+          ];
+        } elseif ($okCount > 0) {
+          $counters['migrated'] += $okCount;
+          $steps[] = [
+            'step'    => 'migrate',
+            'plugin'  => $name,
+            'status'  => 'ok',
+            'message' => sprintf('%d migración(es) ejecutadas.', $okCount),
+          ];
+        } else {
+          $counters['skipped']++;
+          $steps[] = [
+            'step'    => 'migrate',
+            'plugin'  => $name,
+            'status'  => 'skipped',
+            'message' => 'Sin migraciones pendientes.',
+          ];
+        }
+      } catch (Exception $e) {
+        $counters['migration_err']++;
+        $steps[] = [
+          'step'    => 'migrate',
+          'plugin'  => $name,
+          'status'  => 'error',
+          'message' => $e->getMessage(),
+        ];
+      }
+    }
+
+    // Hook para que código externo extienda el rebuild (ej. copiar assets públicos)
+    QuetzalHookManager::runHook('plugins_rebuilt', $steps, $counters);
+
+    return [
+      'steps'   => $steps,
+      'summary' => $counters,
+    ];
+  }
 }
