@@ -755,81 +755,216 @@ class adminController extends Controller implements ControllerInterface
   ////////////////////////////////////////////////////
   ////////////////////////////////////////////////////
   ////////////////////////////////////////////////////
+  /**
+   * Listado de usuarios con búsqueda, ordenamiento y filtro por role.
+   *
+   * Query params:
+   *  - q:     texto libre (busca en username/email)
+   *  - role:  filtra por slug de role
+   *  - sort:  columna (id|username|email|role|created_at)
+   *  - dir:   asc|desc
+   *  - page:  página
+   */
   function usuarios()
   {
+    $q    = sanitize_input((string)($_GET['q']    ?? ''));
+    $role = sanitize_input((string)($_GET['role'] ?? ''));
+    $sort = (string)($_GET['sort'] ?? 'id');
+    $dir  = strtolower((string)($_GET['dir'] ?? 'desc')) === 'asc' ? 'ASC' : 'DESC';
+
+    $allowedSort = ['id', 'username', 'email', 'role', 'created_at'];
+    if (!in_array($sort, $allowedSort, true)) $sort = 'id';
+
+    $wheres = [];
+    $params = [];
+    if ($q !== '') {
+      $wheres[] = '(username LIKE :q OR email LIKE :q)';
+      $params['q'] = '%' . $q . '%';
+    }
+    if ($role !== '') {
+      $wheres[] = 'role = :role';
+      $params['role'] = $role;
+    }
+    $whereSql = $wheres ? 'WHERE ' . implode(' AND ', $wheres) : '';
+
+    $sql   = sprintf('SELECT * FROM quetzal_users %s ORDER BY %s %s', $whereSql, $sort, $dir);
+    $users = PaginationHandler::paginate($sql, $params, 15);
+
+    $roles = (new QuetzalRoleManager())->getRoles() ?: [];
+
     $this->setTitle('Usuarios');
-    $this->addToData('users', userModel::all_paginated());
-    $this->addToData('slug' , 'usuarios');
-    $this->setView('usuarios/usuarios');
+    $this->addToData('users'  , $users);
+    $this->addToData('roles'  , $roles);
+    $this->addToData('filters', ['q' => $q, 'role' => $role, 'sort' => $sort, 'dir' => $dir]);
+    $this->setView('usuarios/index');
     $this->render();
   }
 
-  function post_usuarios()
+  /**
+   * Formulario para crear un nuevo usuario.
+   */
+  function crear_usuario()
+  {
+    $this->setTitle('Nuevo usuario');
+    $this->addToData('roles', (new QuetzalRoleManager())->getRoles() ?: []);
+    $this->setView('usuarios/crear');
+    $this->render();
+  }
+
+  /**
+   * Procesa la creación de un nuevo usuario.
+   */
+  function post_crear_usuario()
   {
     try {
-      if (!check_posted_data(['username','email','password'], $_POST)) {
-        throw new Exception('Por favor completa el formulario.');
-      }
-
-      if (!Csrf::validate($_POST['csrf'])) {
+      if (!Csrf::validate($_POST['csrf'] ?? '')) {
         throw new Exception(get_quetzal_message(0));
       }
 
-      // Definición de variables
-      array_map('sanitize_input', $_POST);
-      $username     = $_POST['username'];
-      $email        = $_POST['email'];
-      $password     = $_POST['password'];
-      $errorMessage = '';
-      $errors       = 0;
+      $username = sanitize_input($_POST['username'] ?? '');
+      $email    = sanitize_input($_POST['email']    ?? '');
+      $role     = sanitize_input($_POST['role']     ?? 'worker');
+      $password = (string) ($_POST['password'] ?? '');
 
-      // Verificar que no exista ya un usuario con ese username o correo electrónico
-      $sql = 'SELECT * FROM quetzal_users WHERE username = :username OR email = :email';
-      if (userModel::query($sql, ['username' => $username, 'email' => $email])) {
-        throw new Exception('Ya existe un usuario registrado con ese nombre de usuario o correo electrónico.');
-      }
-
-      // Validaciones necesarias
       if (!preg_match('/^[a-zA-Z0-9]{5,20}$/', $username)) {
-        $errorMessage .= '- Tu nombre de usuario debe estar formado por mínimo 5 caracteres y máximo 20.<br>';
-        $errors++;
+        throw new Exception('El username debe tener entre 5-20 caracteres alfanuméricos.');
       }
-
       if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $errorMessage .= '- El correo electrónico no es válido.<br>';
-        $errors++;
+        throw new Exception('El correo electrónico no es válido.');
       }
-
-      if (is_temporary_email($email)) {
-        $errorMessage .= '- El dominio del correo electrónico no está autorizado.<br>';
-        $errors++;
+      if (function_exists('is_temporary_email') && is_temporary_email($email)) {
+        throw new Exception('El dominio del correo no está autorizado.');
       }
-
       if (!preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*_-])[A-Za-z\d!@#$%^&*_-]{5,20}$/', $password)) {
-        $errorMessage .= '- La contraseña debe ser de entre 5 y 20 caracteres, por lo menos debe contar con: 1 letra minúscula, 1 letra mayúscula, 1 digito y 1 caracter especial de entre <b>!@#$%^&*_-</b>';
-        $errors++;
+        throw new Exception('La contraseña debe tener 5-20 caracteres e incluir: 1 minúscula, 1 mayúscula, 1 dígito y 1 especial de <b>!@#$%^&*_-</b>');
       }
 
-      if ($errors > 0) {
-        throw new Exception($errorMessage);
+      // Unicidad
+      $exists = userModel::query('SELECT id FROM quetzal_users WHERE username = :u OR email = :e', ['u' => $username, 'e' => $email]);
+      if ($exists) {
+        throw new Exception('Ya existe un usuario con ese nombre o email.');
       }
 
-      // Agregar el nuevo usuario a la base de datos
-      $user     =
-      [
+      if (!$id = userModel::add(userModel::$t1, [
         'username'   => $username,
         'email'      => $email,
+        'role'       => $role,
         'password'   => password_hash($password . AUTH_SALT, PASSWORD_BCRYPT),
-        'created_at' => now()
-      ];
-
-      // Insertando el registro en la base de datos
-      if (!$id = userModel::add(userModel::$t1, $user)) {
-        throw new Exception('Hubo un problema al agregar el usuario.');
+        'created_at' => now(),
+      ])) {
+        throw new Exception('Hubo un problema al crear el usuario.');
       }
 
-      Flasher::success(sprintf('Nuevo usuario agregado con éxito:<br>Usuario: <b>%s</b><br>Contraseña: <b>%s</b>', $user['username'], $password));
+      Flasher::success(sprintf('Usuario <b>%s</b> creado con éxito.', $username));
+      Redirect::to('admin/usuarios');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
       Redirect::back();
+    }
+  }
+
+  /**
+   * Detalle sólo lectura de un usuario.
+   */
+  function ver_usuario($id = null)
+  {
+    $id   = (int) $id;
+    $user = userModel::by_id($id);
+    if (empty($user)) {
+      Flasher::error('El usuario no existe.');
+      Redirect::to('admin/usuarios');
+      exit;
+    }
+
+    // Permisos del role
+    $permissions = [];
+    if (!empty($user['role'])) {
+      try {
+        $mgr         = new QuetzalRoleManager($user['role']);
+        $permissions = $mgr->getPermissions() ?: [];
+      } catch (Exception $e) {}
+    }
+
+    $this->setTitle('Usuario: ' . $user['username']);
+    $this->addToData('user'       , $user);
+    $this->addToData('permissions', $permissions);
+    $this->setView('usuarios/ver');
+    $this->render();
+  }
+
+  /**
+   * Formulario para editar un usuario.
+   */
+  function editar_usuario($id = null)
+  {
+    $id   = (int) $id;
+    $user = userModel::by_id($id);
+    if (empty($user)) {
+      Flasher::error('El usuario no existe.');
+      Redirect::to('admin/usuarios');
+      exit;
+    }
+
+    $this->setTitle('Editar usuario: ' . $user['username']);
+    $this->addToData('user' , $user);
+    $this->addToData('roles', (new QuetzalRoleManager())->getRoles() ?: []);
+    $this->setView('usuarios/editar');
+    $this->render();
+  }
+
+  /**
+   * Procesa la edición de un usuario. Password opcional (vacío = no cambiar).
+   */
+  function post_editar_usuario()
+  {
+    try {
+      if (!Csrf::validate($_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $id       = (int) ($_POST['id'] ?? 0);
+      $username = sanitize_input($_POST['username'] ?? '');
+      $email    = sanitize_input($_POST['email']    ?? '');
+      $role     = sanitize_input($_POST['role']     ?? 'worker');
+      $password = (string) ($_POST['password'] ?? '');
+
+      $user = userModel::by_id($id);
+      if (empty($user)) throw new Exception('El usuario no existe.');
+
+      if (!preg_match('/^[a-zA-Z0-9]{5,20}$/', $username)) {
+        throw new Exception('El username debe tener entre 5-20 caracteres alfanuméricos.');
+      }
+      if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new Exception('El correo electrónico no es válido.');
+      }
+
+      // Unicidad excluyendo al propio usuario
+      $dup = userModel::query(
+        'SELECT id FROM quetzal_users WHERE (username = :u OR email = :e) AND id != :id LIMIT 1',
+        ['u' => $username, 'e' => $email, 'id' => $id]
+      );
+      if ($dup) throw new Exception('Ya existe otro usuario con ese nombre o email.');
+
+      $update = [
+        'username' => $username,
+        'email'    => $email,
+        'role'     => $role,
+      ];
+
+      if ($password !== '') {
+        if (!preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*_-])[A-Za-z\d!@#$%^&*_-]{5,20}$/', $password)) {
+          throw new Exception('La contraseña no cumple los requisitos. Déjala vacía si no quieres cambiarla.');
+        }
+        $update['password'] = password_hash($password . AUTH_SALT, PASSWORD_BCRYPT);
+      }
+
+      if (!userModel::update(userModel::$t1, ['id' => $id], $update)) {
+        throw new Exception('No se pudo actualizar el usuario.');
+      }
+
+      Flasher::success(sprintf('Usuario <b>%s</b> actualizado.', $username));
+      Redirect::to('admin/ver_usuario/' . $id);
 
     } catch (Exception $e) {
       Flasher::error($e->getMessage());
