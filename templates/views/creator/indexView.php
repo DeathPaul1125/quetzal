@@ -36,8 +36,8 @@
                 <label class="form-check-label" for="generar-vista">Crear carpeta y vista inicial</label>
               </div>
               <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" id="usar-blade" name="usar-blade">
-                <label class="form-check-label" for="usar-blade">Usar Blade</label>
+                <input class="form-check-input" type="checkbox" id="usar-blade-info" disabled checked>
+                <label class="form-check-label text-muted" for="usar-blade-info">Blade (obligatorio desde v1.6)</label>
               </div>
             </div>
 
@@ -104,8 +104,8 @@
 
             <div class="mb-3">
               <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" id="usar-blade2" name="usar-blade" <?php echo (defined('USE_BLADE') && USE_BLADE) ? 'checked' : ''; ?>>
-                <label class="form-check-label" for="usar-blade2">Usar Blade</label>
+                <input class="form-check-input" type="checkbox" id="usar-blade2-info" disabled checked>
+                <label class="form-check-label text-muted" for="usar-blade2-info">Blade (obligatorio desde v1.6)</label>
               </div>
             </div>
 

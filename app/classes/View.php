@@ -2,79 +2,65 @@
 
 use Jenssegers\Blade\Blade;
 
-class View {
-
+/**
+ * Motor de vistas de Quetzal.
+ *
+ * Blade es el único motor soportado desde la v1.6. Todas las vistas deben
+ * ser archivos `.blade.php` ubicados en:
+ *   - templates/views/<controlador>/<nombre>View.blade.php
+ *   - plugins/<Plugin>/views/<controlador>/<nombre>View.blade.php
+ *
+ * Uso típico desde un controlador:
+ *   $this->setView('index');
+ *   $this->render();
+ *
+ * Para renderizar ad-hoc:
+ *   View::render('index', $data);
+ *   View::render('admin.perfil', $data);        // notación con puntos
+ *   View::render('MyPlugin::home', $data);      // namespace de plugin
+ */
+class View
+{
   /**
-   * El path a la carpeta de vistas del controlador actual
-   *
-   * @var string
+   * Directorio base de templates.
    */
-  private $path           = null;
+  private $baseDir = null;
 
   /**
-   * El directorio base para el cargador de recursos
-   *
-   * @var string
+   * Directorio base de vistas (templates/views).
    */
-  private $baseDir        = null;
+  private $viewsDir = null;
 
   /**
-   * El directorio base para el directorio de las vistas
-   *
-   * @var string
+   * Controlador actual para resolver vistas relativas.
    */
-  private $viewsDir       = null;
+  private $controller = null;
 
   /**
-   * El controlador actual cargado
-   *
-   * @var string
+   * Separador de directorios.
    */
-  private $controller     = null;
+  private $DS = null;
 
   /**
-   * Separador de directorios
-   *
-   * @var string
-   */
-  private $DS             = null;
-
-  /**
-   * Instancia del motor Blade
+   * Instancia del motor Blade.
    *
    * @var Blade
    */
-  private $bladeInstance  = null;
+  private $bladeInstance = null;
 
   /**
-   * Directorios raíz desde donde Blade busca plantillas. El primero
-   * tiene mayor prioridad; los plugins se registran desde su Init.php.
+   * Directorios raíz donde Blade busca plantillas.
+   * El primero tiene mayor prioridad; los plugins se registran desde su Init.php.
    *
    * @var array
    */
   private static $bladeViewPaths = [];
 
   /**
-   * Directorios raíz para la búsqueda de vistas del motor 'quetzal'
-   * (PHP plano). Orden de mayor a menor prioridad.
-   *
-   * @var array
+   * Nombre de la vista actual a renderizar.
    */
-  private static $quetzalViewPaths = [];
+  private $currentView = null;
 
-  /**
-   * El motor de plantillas a ser utilizado
-   *
-   * @var string
-   */
-  private $templateEngine = 'quetzal';
-
-  /**
-   * La vista a ser renderizada
-   *
-   * @var string
-   */
-  private $currentView    = null;
 
   function __construct($engine = null)
   {
@@ -86,17 +72,10 @@ class View {
     $this->controller = defined('CONTROLLER') ? CONTROLLER : '';
     $this->DS         = defined('DS')         ? DS         : DIRECTORY_SEPARATOR;
 
-    if ($engine !== null) {
-      $this->templateEngine = $engine;
-    }
+    // El parámetro $engine se mantiene por compatibilidad con código viejo,
+    // pero se ignora: Blade es el único motor soportado.
 
-    if ((defined('USE_BLADE') && USE_BLADE === true) || $this->templateEngine == 'blade') {
-      $this->templateEngine = 'blade';
-      $this->setUpBladeEngine();
-    }
-
-    // Definimos el path directo a la carpeta de vistas de la instancia de la clase
-    $this->path = 'views' . $this->DS . $this->controller . $this->DS;
+    $this->setUpBladeEngine();
   }
 
   /**
@@ -114,22 +93,19 @@ class View {
   }
 
   /**
-   * Registra un directorio adicional de vistas para el motor 'quetzal' (PHP plano).
+   * Alias de addBladeViewPath — se mantiene para compatibilidad.
    *
-   * @param string $path Ruta al directorio que contiene carpetas de vistas por controlador
+   * @param string $path
    * @return void
+   * @deprecated 1.6 usar addBladeViewPath()
    */
   public static function addQuetzalViewPath(string $path)
   {
-    $path = rtrim($path, '/\\') . DS;
-    if (!in_array($path, self::$quetzalViewPaths, true)) {
-      array_unshift(self::$quetzalViewPaths, $path);
-    }
+    self::addBladeViewPath($path);
   }
 
   /**
-   * Atajo: registra el mismo directorio para ambos motores (útil para plugins
-   * que traen vistas en varios formatos dentro del mismo folder).
+   * Registra un directorio de vistas (alias de addBladeViewPath).
    *
    * @param string $path
    * @return void
@@ -137,7 +113,6 @@ class View {
   public static function addViewPath(string $path)
   {
     self::addBladeViewPath($path);
-    self::addQuetzalViewPath($path);
   }
 
   /**
@@ -148,8 +123,11 @@ class View {
    */
   private function setUpBladeEngine()
   {
-    $viewPaths   = array_values(array_unique(array_merge(self::$bladeViewPaths, [$this->baseDir, $this->viewsDir])));
-    $cachePath   = defined('BLADE_CACHE') ? BLADE_CACHE : ROOT . 'app' . DS . 'cache' . DS . 'blade';
+    $viewPaths = array_values(array_unique(array_merge(
+      self::$bladeViewPaths,
+      [$this->baseDir, $this->viewsDir]
+    )));
+    $cachePath = defined('BLADE_CACHE') ? BLADE_CACHE : ROOT . 'app' . DS . 'cache' . DS . 'blade';
 
     if (!is_dir($cachePath)) {
       @mkdir($cachePath, 0775, true);
@@ -168,7 +146,7 @@ class View {
   }
 
   /**
-   * Registra funciones y directivas personalizadas en Blade.
+   * Registra directivas personalizadas en Blade.
    *
    * @return void
    */
@@ -181,7 +159,7 @@ class View {
       return "<?php echo '<input type=\"hidden\" name=\"_t\" value=\"' . (defined('CSRF_TOKEN') ? CSRF_TOKEN : '') . '\">'; ?>";
     });
 
-    // Directivas @auth / @guest como if estándar (evitan container lookup de blade.compiler)
+    // Directivas @auth / @guest
     $compiler->directive('auth', function () {
       return "<?php if (function_exists('is_logged') && is_logged()): ?>";
     });
@@ -195,64 +173,22 @@ class View {
       return "<?php endif; ?>";
     });
 
+    // Directiva @can('slug') — verifica permisos del usuario loggeado
+    $compiler->directive('can', function ($expression) {
+      return "<?php if (function_exists('user_can') && user_can($expression)): ?>";
+    });
+    $compiler->directive('endcan', function () {
+      return "<?php endif; ?>";
+    });
+
     // Hook para que los plugins registren directivas/filtros Blade
-    QuetzalHookManager::runHook('on_blade_setup', $this->bladeInstance, $compiler);
+    if (class_exists('QuetzalHookManager')) {
+      QuetzalHookManager::runHook('on_blade_setup', $this->bladeInstance, $compiler);
+    }
   }
 
   /**
-   * Renderiza una vista con el motor nativo de Quetzal (PHP plano).
-   *
-   * @param string $view
-   * @param array $data
-   * @return void
-   */
-  function renderQuetzalTemplate(string $view, array $data = [])
-  {
-    $this->currentView = sprintf('%sView.php', $view);
-
-    $resolved = $this->resolveQuetzalView($view);
-    if ($resolved === false) {
-      die(sprintf('No existe la vista "%sView" resolvible en el controlador "%s" o en plugins registrados.', $view, $this->controller));
-    }
-
-    if (is_array($data) && !is_object($data)) {
-      $d = to_object($data); // $d disponible como objeto dentro de la vista
-    }
-
-    // Extraer variables del array de datos para que estén disponibles por nombre
-    extract($data, EXTR_SKIP);
-
-    require $resolved;
-  }
-
-  /**
-   * Busca la vista PHP en plugins registrados y luego en el core.
-   *
-   * @param string $view
-   * @return string|false
-   */
-  private function resolveQuetzalView(string $view)
-  {
-    $relative = $this->controller . $this->DS . sprintf('%sView.php', $view);
-
-    foreach (self::$quetzalViewPaths as $base) {
-      $candidate = $base . $relative;
-      if (is_file($candidate)) return $candidate;
-    }
-
-    $overrides = QuetzalHookManager::getHookData('resolve_view_path', $relative, 'quetzal');
-    foreach ($overrides as $candidate) {
-      if (is_string($candidate) && is_file($candidate)) {
-        return $candidate;
-      }
-    }
-
-    $default = $this->viewsDir . $relative;
-    return is_file($default) ? $default : false;
-  }
-
-  /**
-   * Renderiza una vista con Blade.
+   * Renderiza una vista con Blade. Si la vista no existe, lanza error claro.
    *
    * @param string $view
    * @param array $data
@@ -261,81 +197,75 @@ class View {
   function renderBladeTemplate(string $view, array $data = [])
   {
     try {
-      // Notación con puntos: "controller.view" o "namespace::controller.view"
       $viewName = $this->resolveBladeViewName($view);
 
       if (!$this->bladeInstance->exists($viewName)) {
-        die(sprintf('No existe la vista Blade "%s" (buscada como "%s") en el controlador "%s".', $view, $viewName, $this->controller));
+        die(sprintf(
+          '<pre style="font-family:monospace;padding:1rem;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:8px;margin:1rem;">'
+          . '<b>No existe la vista Blade:</b> %s'
+          . "\n" . '<b>Archivo esperado:</b> templates/views/%s/%sView.blade.php'
+          . "\n\n" . 'Desde Quetzal 1.6 todas las vistas deben ser <code>.blade.php</code>.</pre>',
+          htmlspecialchars($viewName),
+          htmlspecialchars($this->controller),
+          htmlspecialchars($view)
+        ));
       }
 
       echo $this->bladeInstance->render($viewName, $data);
 
     } catch (Exception $e) {
-      die('Error al renderizar Blade: ' . $e->getMessage());
+      die('Error al renderizar Blade: ' . htmlspecialchars($e->getMessage()));
     }
   }
 
   /**
    * Convierte un nombre de vista (posiblemente con namespace::) a la
-   * notación con puntos que Blade espera.
+   * notación con puntos que Blade espera, añadiendo el sufijo "View"
+   * para mantener la convención de Quetzal (xxxView.blade.php).
    *
    * @param string $view
    * @return string
    */
   private function resolveBladeViewName(string $view)
   {
-    // Soporte para namespaces de plugins: "MyPlugin::home"
+    // Namespace de plugin: "MyPlugin::home"
     if (strpos($view, '::') !== false) {
       return $view;
     }
 
-    // Permite que el controlador pase la vista ya con puntos
+    // Vista ya con puntos (ej. "admin.perfil")
     if (strpos($view, '.') !== false) {
       return 'views.' . $view;
     }
 
-    // Convención Quetzal: sufijo "View" en el nombre de archivo (indexView.blade.php)
+    // Por defecto: carpeta del controlador actual + sufijo View
     return 'views.' . $this->controller . '.' . $view . 'View';
   }
 
   /**
-   * Renderiza una vista con el motor por defecto configurado o también
-   * usando blade de forma explícita.
+   * Renderiza una vista. Blade es el único motor; el tercer parámetro se
+   * mantiene por compatibilidad pero se ignora.
    *
    * @param string $view
    * @param array $data
-   * @param string $templateEngine
-   * @return mixed
+   * @param string|null $templateEngine (ignorado)
+   * @return void
    */
   public static function render(string $view, array $data = [], ?string $templateEngine = null)
   {
-    $engine = new self($templateEngine);
-
-    switch ($engine->templateEngine) {
-      case 'blade':
-        $engine->renderBladeTemplate($view, $data);
-        break;
-
-      case 'quetzal':
-        $engine->renderQuetzalTemplate($view, $data);
-        break;
-
-      default:
-        die("Motor de plantillas no válido");
-        break;
-    }
+    $engine = new self();
+    $engine->renderBladeTemplate($view, $data);
   }
 
   /**
-   * Renderiza una vista usando el motor Blade explícitamente.
+   * Alias explícito (retrocompatibilidad).
    *
    * @param string $view
    * @param array $data
-   * @return mixed
+   * @return void
    */
   public static function render_blade(string $view, array $data = [])
   {
-    $engine = new self('blade');
-    $engine->renderBladeTemplate($view, $data);
+    self::render($view, $data);
   }
 }

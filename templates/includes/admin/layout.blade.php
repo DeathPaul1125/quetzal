@@ -15,6 +15,8 @@
   <base href="{{ get_base_url() }}">
   <title>@yield('title', $title ?? 'Administración') — {{ defined('SITE_NAME') ? SITE_NAME : 'Quetzal' }}</title>
 
+  {!! function_exists('get_favicon') ? get_favicon() : '' !!}
+
   {{-- Tailwind + Preline --}}
   <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/preline@2.4.1/dist/preline.min.css">

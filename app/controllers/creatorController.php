@@ -47,7 +47,6 @@ class creatorController extends Controller implements ControllerInterface
       $filename = str_replace('.php', '', $filename);
       $keyword  = 'Controller';
       $g_vista  = isset($_POST["generar-vista"]) ? true : false;
-      $blade    = isset($_POST["usar-blade"]) ? true : false;
       $template = MODULES . 'quetzal' . DS . 'controllerTemplate.txt';
   
       // Validar que sea un string válido
@@ -73,7 +72,7 @@ class creatorController extends Controller implements ControllerInterface
       // Cargar contenido del archivo
       $php = @file_get_contents($template);
       $php = str_replace('[[REPLACE]]', $filename, $php);
-      $php = str_replace('[[ENGINE]]', $blade ? 'blade' : 'quetzal', $php);
+      $php = str_replace('[[ENGINE]]', 'blade', $php);
   
       // Generar el archivo del controlador
       if (file_put_contents(CONTROLLERS . $filename . $keyword . '.php', $php) === false) {
@@ -85,16 +84,15 @@ class creatorController extends Controller implements ControllerInterface
         mkdir(VIEWS . $filename);
       }
   
-      // Generar la vista solo si así se solicita
+      // Generar la vista solo si así se solicita (siempre Blade)
       if ($g_vista === true) {
-        $viewTemplate = MODULES . 'quetzal' . DS . ($blade ? 'viewBladeTemplate.txt' : 'viewTemplate.txt');
+        $viewTemplate = MODULES . 'quetzal' . DS . 'viewBladeTemplate.txt';
 
-        // Crear una vista por defecto
         if (!is_file($viewTemplate)) {
           Flasher::error(sprintf('La vista no fue creada, no existe la plantilla <b>%s</b>.', $viewTemplate));
         } else {
           $html = @file_get_contents($viewTemplate);
-          @file_put_contents(VIEWS . $filename . DS . ($blade ? 'indexView.blade.php' : 'indexView.php'), $html);
+          @file_put_contents(VIEWS . $filename . DS . 'indexView.blade.php', $html);
         }
       }
   
@@ -198,9 +196,8 @@ class creatorController extends Controller implements ControllerInterface
       $viewName   = remove_accents($viewName);
       $viewName   = normalize_string($viewName, true);
       $keyword    = 'View';
-      $blade      = isset($_POST["usar-blade"]) ? true : false;
-      $template   = MODULES . 'quetzal' . DS . ($blade ? 'viewBladeTemplate.txt' : 'viewTemplate.txt');
-      $filename   = sprintf('%s%s.%s', $viewName, $keyword, $blade ? 'blade.php' : 'php');
+      $template   = MODULES . 'quetzal' . DS . 'viewBladeTemplate.txt';
+      $filename   = sprintf('%s%s.blade.php', $viewName, $keyword);
   
       // Validar que sea un string válido
       if (!is_string($viewName)) {

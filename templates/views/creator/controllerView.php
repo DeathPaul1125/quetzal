@@ -31,8 +31,8 @@
                 <label class="form-check-label" for="generar-vista">Crear carpeta y vista inicial</label>
               </div>
               <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" id="usar-blade" name="usar-blade">
-                <label class="form-check-label" for="usar-blade">Usar Blade</label>
+                <input class="form-check-input" type="checkbox" id="usar-blade-info" disabled checked>
+                <label class="form-check-label text-muted" for="usar-blade-info">Blade (obligatorio desde v1.6)</label>
               </div>
             </div>
 

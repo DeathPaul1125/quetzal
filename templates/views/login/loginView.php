@@ -16,6 +16,8 @@ $showDemoHints = (function_exists('is_demo') && is_demo()) || (function_exists('
   <base href="<?php echo get_base_url(); ?>">
   <title><?php echo htmlspecialchars($title); ?> — <?php echo $siteName; ?></title>
 
+  <?php echo function_exists('get_favicon') ? get_favicon() : ''; ?>
+
   <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/preline@2.4.1/dist/preline.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.min.css">

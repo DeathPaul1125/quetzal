@@ -133,10 +133,12 @@ define('WAITME'                  , filter_var($_ENV['USE_WAITME'], FILTER_VALIDA
 define('LIGHTBOX'                , filter_var($_ENV['USE_LIGHTBOX'], FILTER_VALIDATE_BOOLEAN)); // define si es requerido Lightbox
 
 /**
- * Motor de templates con Blade (jenssegers/blade)
+ * Motor de templates Blade (jenssegers/blade). Desde Quetzal 1.6 Blade es
+ * el único motor soportado. USE_BLADE se mantiene como constante siempre
+ * true para compatibilidad con código legacy que la inspeccione.
  * @since 1.6.0
  */
-define('USE_BLADE'               , filter_var($_ENV['USE_BLADE'] ?? false, FILTER_VALIDATE_BOOLEAN)); // define si será usado Blade por defecto para renderizar las vistas
+define('USE_BLADE'               , true);
 define('BLADE_CACHE'             , ROOT . 'app' . DS . 'cache' . DS . 'blade'); // directorio de cache de Blade
 
 // Datos de la empresa / negocio / sistema

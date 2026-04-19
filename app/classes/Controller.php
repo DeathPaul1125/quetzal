@@ -31,11 +31,13 @@ class Controller {
   protected string $viewName      = 'index';
 
   /**
-   * El motor de renderizado, puede ser quetzal (PHP plano) o blade
+   * El motor de renderizado. Desde la v1.6 es siempre 'blade' — todas las
+   * vistas deben ser archivos .blade.php. La propiedad se mantiene por
+   * compatibilidad con código que inspeccione $engine.
    *
    * @var string
    */
-  protected string $engine         = 'quetzal';
+  protected string $engine         = 'blade';
 
   /**
    * Toda la información que será pasada a la vista o a la ruta para ser procesada en caso de ser ajax o endpoint
@@ -121,8 +123,7 @@ class Controller {
     $this->controller = CONTROLLER;
     $this->method     = METHOD;
 
-    // Validar el engine a utilizar por defecto
-    $this->engine     = (defined('USE_BLADE') && USE_BLADE === true) ? 'blade' : $this->engine;
+    // El engine siempre es 'blade' (Quetzal 1.6+). Ver View.php.
 
     // Definir el título por defecto de la página
     $this->addToData('title'      , 'Reemplaza el título de la página');
@@ -260,7 +261,9 @@ class Controller {
    */
   function setEngine(string $engine)
   {
-    $this->engine = $engine;
+    // Desde la v1.6 Blade es el único motor. El parámetro se acepta por
+    // compatibilidad pero no cambia el comportamiento.
+    $this->engine = 'blade';
   }
 
   /**
