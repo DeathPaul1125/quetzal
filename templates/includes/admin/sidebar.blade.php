@@ -22,6 +22,7 @@
     ['group' => 'Sistema', 'items' => [
       ['label' => 'Roles',        'icon' => 'ri-shield-user-line', 'url' => 'admin/roles',        'controller' => 'admin', 'method' => 'roles',       'activeMethods' => ['editar_role'], 'permission' => 'admin-access'],
       ['label' => 'Permisos',     'icon' => 'ri-key-2-line',       'url' => 'admin/permisos',     'controller' => 'admin', 'method' => 'permisos',    'permission' => 'admin-access'],
+      ['label' => 'Plugins',      'icon' => 'ri-plug-line',        'url' => 'admin/plugins',      'controller' => 'admin', 'method' => 'plugins',     'permission' => 'admin-access'],
       ['label' => 'Migraciones',  'icon' => 'ri-database-2-line',  'url' => 'admin/migraciones',  'controller' => 'admin', 'method' => 'migraciones', 'permission' => 'admin-access'],
       ['label' => 'Apariencia',   'icon' => 'ri-palette-line',     'url' => 'admin/apariencia',   'controller' => 'admin', 'method' => 'apariencia',  'permission' => 'admin-access'],
       ['label' => 'Perfil',       'icon' => 'ri-id-card-line',     'url' => 'admin/perfil',       'controller' => 'admin', 'method' => 'perfil',      'permission' => null],

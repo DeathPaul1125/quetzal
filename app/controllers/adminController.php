@@ -196,6 +196,104 @@ class adminController extends Controller implements ControllerInterface
   }
 
   ////////////////////////////////////////////////////
+  //////// PLUGINS
+  ////////////////////////////////////////////////////
+
+  /**
+   * Panel de gestión de plugins.
+   */
+  function plugins()
+  {
+    $this->guardAdminAccess();
+
+    $mgr      = QuetzalPluginManager::getInstance();
+    $all      = $mgr->listAll(); // todos los descubiertos con estado anotado
+
+    // Calcular resumen
+    $summary = [
+      'total'      => count($all),
+      'installed'  => count(array_filter($all, fn($p) => !empty($p['installed']))),
+      'enabled'    => count(array_filter($all, fn($p) => !empty($p['enabled']))),
+    ];
+
+    $this->setTitle('Plugins');
+    $this->addToData('plugins' , $all);
+    $this->addToData('summary' , $summary);
+    $this->setView('plugins');
+    $this->render();
+  }
+
+  /**
+   * Helper interno: ejecuta la acción sobre un plugin con validación estándar.
+   *
+   * @param callable(QuetzalPluginManager, string): void $action
+   * @param string $successMsg
+   */
+  private function handlePluginAction(callable $action, string $successMsg): void
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $name = sanitize_input($_POST['name'] ?? '');
+      if (!preg_match('/^[A-Za-z0-9_-]{1,100}$/', $name)) {
+        throw new Exception('Nombre de plugin inválido.');
+      }
+
+      $mgr = QuetzalPluginManager::getInstance();
+      $action($mgr, $name);
+
+      Flasher::success(sprintf($successMsg, $name));
+      Redirect::to('admin/plugins');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
+  function post_plugin_install()
+  {
+    $this->handlePluginAction(
+      fn($mgr, $name) => $mgr->install($name),
+      'Plugin <b>%s</b> instalado. Habilítalo para que empiece a cargar.'
+    );
+  }
+
+  function post_plugin_uninstall()
+  {
+    $this->handlePluginAction(
+      function ($mgr, $name) {
+        // Deshabilitar primero si está habilitado (para liberar deps)
+        $record = $mgr->getRecord($name);
+        if (!empty($record['enabled'])) {
+          $mgr->disable($name);
+        }
+        $mgr->uninstall($name);
+      },
+      'Plugin <b>%s</b> desinstalado. Los archivos siguen en disco.'
+    );
+  }
+
+  function post_plugin_enable()
+  {
+    $this->handlePluginAction(
+      fn($mgr, $name) => $mgr->enable($name),
+      'Plugin <b>%s</b> habilitado.'
+    );
+  }
+
+  function post_plugin_disable()
+  {
+    $this->handlePluginAction(
+      fn($mgr, $name) => $mgr->disable($name),
+      'Plugin <b>%s</b> deshabilitado.'
+    );
+  }
+
+  ////////////////////////////////////////////////////
   //////// MIGRACIONES
   ////////////////////////////////////////////////////
 
