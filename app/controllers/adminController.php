@@ -537,15 +537,49 @@ class adminController extends Controller implements ControllerInterface
     return [$roles, $permissions];
   }
 
+  /**
+   * Listado de roles con búsqueda.
+   */
   function roles()
   {
     $this->guardAdminAccess();
-    [$roles, $permissions] = $this->fetchRolesAndPermissions();
 
-    $this->setTitle('Roles y permisos');
-    $this->addToData('roles'      , $roles);
-    $this->addToData('permissions', $permissions);
-    $this->setView('roles');
+    $q = sanitize_input((string)($_GET['q'] ?? ''));
+
+    $whereSql = '';
+    $params   = [];
+    if ($q !== '') {
+      $whereSql = 'WHERE r.nombre LIKE :q OR r.slug LIKE :q';
+      $params['q'] = '%' . $q . '%';
+    }
+
+    $sql = sprintf('
+      SELECT r.*, COUNT(rp.id_permiso) AS permiso_count,
+        (SELECT COUNT(*) FROM quetzal_users u WHERE u.role = r.slug) AS user_count
+      FROM quetzal_roles r
+      LEFT JOIN quetzal_roles_permisos rp ON rp.id_role = r.id
+      %s
+      GROUP BY r.id
+      ORDER BY r.id ASC
+    ', $whereSql);
+
+    $roles = Model::query($sql, $params) ?: [];
+
+    $this->setTitle('Roles');
+    $this->addToData('roles'  , $roles);
+    $this->addToData('filters', ['q' => $q]);
+    $this->setView('roles/index');
+    $this->render();
+  }
+
+  /**
+   * Formulario para crear un nuevo role.
+   */
+  function crear_role()
+  {
+    $this->guardAdminAccess();
+    $this->setTitle('Nuevo role');
+    $this->setView('roles/crear');
     $this->render();
   }
 
@@ -566,13 +600,46 @@ class adminController extends Controller implements ControllerInterface
       $mgr = new QuetzalRoleManager();
       $mgr->addRole($nombre, $slug);
 
-      Flasher::success(sprintf('Role <b>%s</b> creado con éxito.', $nombre));
-      Redirect::to('admin/roles');
+      $created = Model::list('quetzal_roles', ['slug' => $slug], 1);
+      Flasher::success(sprintf('Role <b>%s</b> creado. Ahora puedes asignarle permisos.', $nombre));
+      Redirect::to('admin/editar_role/' . $created['id']);
 
     } catch (Exception $e) {
       Flasher::error($e->getMessage());
       Redirect::back();
     }
+  }
+
+  /**
+   * Detalle sólo lectura de un role.
+   */
+  function ver_role($id = null)
+  {
+    $this->guardAdminAccess();
+
+    $id   = (int) $id;
+    $role = Model::list('quetzal_roles', ['id' => $id], 1);
+    if (!$role) {
+      Flasher::error('No existe el role solicitado.');
+      Redirect::to('admin/roles');
+      exit;
+    }
+
+    $mgr         = new QuetzalRoleManager($role['slug']);
+    $permissions = $mgr->getPermissions() ?: [];
+    $users       = Model::query(
+      'SELECT id, username, email FROM quetzal_users WHERE role = :r ORDER BY username ASC LIMIT 50',
+      ['r' => $role['slug']]
+    ) ?: [];
+    $isProtected = in_array($role['slug'], ['admin', 'developer', 'worker'], true);
+
+    $this->setTitle('Role: ' . $role['nombre']);
+    $this->addToData('role'       , $role);
+    $this->addToData('permissions', $permissions);
+    $this->addToData('users'      , $users);
+    $this->addToData('isProtected', $isProtected);
+    $this->setView('roles/ver');
+    $this->render();
   }
 
   function editar_role($id = null)
@@ -597,7 +664,7 @@ class adminController extends Controller implements ControllerInterface
     $this->addToData('allPerms'    , $allPerms);
     $this->addToData('rolePerms'   , $rolePerms);
     $this->addToData('isProtected' , $isProtected);
-    $this->setView('editarRole');
+    $this->setView('roles/editar');
     $this->render();
   }
 
@@ -649,7 +716,7 @@ class adminController extends Controller implements ControllerInterface
       }
 
       Flasher::success('Role actualizado con éxito.');
-      Redirect::to('admin/editar_role/' . $id);
+      Redirect::to('admin/ver_role/' . $id);
 
     } catch (Exception $e) {
       Flasher::error($e->getMessage());

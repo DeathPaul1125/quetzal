@@ -51,6 +51,25 @@
     .alert-warning { background: #fffbeb; color: #92400e; border-color: #fde68a; }
     .alert-info, .alert-primary { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
     .alert .btn-close { display: none; }
+
+    /* Paginador Bootstrap (de PaginationHandler) → estilo Tailwind horizontal */
+    .pagination { display: inline-flex; flex-wrap: wrap; gap: .25rem; padding: 0; margin: 0; list-style: none; }
+    .pagination .page-item { margin: 0; }
+    .pagination .page-link {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 2rem; height: 2rem; padding: 0 .5rem;
+      border-radius: .375rem; border: 1px solid #e2e8f0;
+      color: #475569; text-decoration: none; font-size: .8125rem;
+      background: #fff; transition: background-color .15s, border-color .15s;
+    }
+    .pagination .page-link:hover { background: #f8fafc; border-color: #cbd5e1; }
+    .pagination .page-item.active .page-link {
+      background: var(--q-primary); color: #fff; border-color: var(--q-primary);
+    }
+    .pagination .page-item.disabled .page-link {
+      color: #cbd5e1; pointer-events: none; background: #f8fafc;
+    }
+    .quetzal-pagination-wrapper { margin-top: 0 !important; }
   </style>
 
   @stack('head')
