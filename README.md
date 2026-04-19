@@ -31,7 +31,7 @@ Quetzal incluye un asistente web que configura todo por ti: instala dependencias
 
 ### Requisitos
 
-- PHP **≥ 7.4** (recomendado 8.1+)
+- PHP **≥ 8.3**
 - MySQL / MariaDB
 - Apache con `mod_rewrite`
 - Extensiones: `pdo_mysql`, `mbstring`, `openssl`, `gd`, `curl`, `json`

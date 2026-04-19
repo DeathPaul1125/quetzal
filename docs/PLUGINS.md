@@ -44,7 +44,7 @@ Archivo JSON **obligatorio** en la raíz del plugin. Define la metadata y compat
   "description": "Breve descripción del plugin.",
   "author": "Tu Nombre",
   "min_quetzal_version": "1.6.0",
-  "min_php": "8.1",
+  "min_php": "8.3",
   "requires": ["OtroPlugin"]
 }
 ```

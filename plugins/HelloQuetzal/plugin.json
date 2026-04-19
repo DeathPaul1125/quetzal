@@ -4,6 +4,6 @@
   "description": "Plugin de ejemplo que demuestra la API del sistema de plugins: controladores, vistas (Blade y PHP), migraciones, hooks y assets.",
   "author": "Quetzal Team",
   "min_quetzal_version": "1.6.0",
-  "min_php": "8.1",
+  "min_php": "8.3",
   "requires": []
 }
