@@ -157,6 +157,13 @@ class View {
 
     $this->bladeInstance = new Blade($viewPaths, $cachePath);
 
+    // jenssegers/blade solo setea el contenedor para facades.
+    // Illuminate\View compila echos que llaman a app('blade.compiler'),
+    // por lo que necesitamos el contenedor también como instancia global.
+    $container = (new \ReflectionClass($this->bladeInstance))->getProperty('container');
+    $container->setAccessible(true);
+    \Illuminate\Container\Container::setInstance($container->getValue($this->bladeInstance));
+
     $this->registerBladeExtensions();
   }
 
@@ -174,13 +181,18 @@ class View {
       return "<?php echo '<input type=\"hidden\" name=\"_t\" value=\"' . (defined('CSRF_TOKEN') ? CSRF_TOKEN : '') . '\">'; ?>";
     });
 
-    // Directiva @auth / @guest usando helpers de Quetzal
-    $compiler->if('auth', function () {
-      return function_exists('is_logged') && is_logged();
+    // Directivas @auth / @guest como if estándar (evitan container lookup de blade.compiler)
+    $compiler->directive('auth', function () {
+      return "<?php if (function_exists('is_logged') && is_logged()): ?>";
     });
-
-    $compiler->if('guest', function () {
-      return !(function_exists('is_logged') && is_logged());
+    $compiler->directive('endauth', function () {
+      return "<?php endif; ?>";
+    });
+    $compiler->directive('guest', function () {
+      return "<?php if (!(function_exists('is_logged') && is_logged())): ?>";
+    });
+    $compiler->directive('endguest', function () {
+      return "<?php endif; ?>";
     });
 
     // Hook para que los plugins registren directivas/filtros Blade
@@ -282,7 +294,8 @@ class View {
       return 'views.' . $view;
     }
 
-    return 'views.' . $this->controller . '.' . $view;
+    // Convención Quetzal: sufijo "View" en el nombre de archivo (indexView.blade.php)
+    return 'views.' . $this->controller . '.' . $view . 'View';
   }
 
   /**
