@@ -195,6 +195,295 @@ class adminController extends Controller implements ControllerInterface
     }
   }
 
+  ////////////////////////////////////////////////////
+  //////// ROLES Y PERMISOS
+  ////////////////////////////////////////////////////
+
+  /**
+   * Guarda: usuario actual debe tener admin-access.
+   */
+  private function guardAdminAccess(string $msg = 'No tienes permiso para gestionar esta sección.'): void
+  {
+    if (!user_can('admin-access')) {
+      Flasher::error($msg);
+      Redirect::to('admin');
+      exit;
+    }
+  }
+
+  /**
+   * Retorna todos los permisos + cuántos roles los usan (para la UI de permisos)
+   * y todos los roles + cuántos permisos tienen (para la UI de roles).
+   *
+   * @return array [$roles, $permissions]
+   */
+  private function fetchRolesAndPermissions(): array
+  {
+    $roles = Model::query('
+      SELECT r.*, COUNT(rp.id_permiso) AS permiso_count,
+        (SELECT COUNT(*) FROM quetzal_users u WHERE u.role = r.slug) AS user_count
+      FROM quetzal_roles r
+      LEFT JOIN quetzal_roles_permisos rp ON rp.id_role = r.id
+      GROUP BY r.id
+      ORDER BY r.id ASC
+    ') ?: [];
+
+    $permissions = Model::query('
+      SELECT p.*, COUNT(rp.id_role) AS role_count
+      FROM quetzal_permisos p
+      LEFT JOIN quetzal_roles_permisos rp ON rp.id_permiso = p.id
+      GROUP BY p.id
+      ORDER BY p.nombre ASC
+    ') ?: [];
+
+    return [$roles, $permissions];
+  }
+
+  function roles()
+  {
+    $this->guardAdminAccess();
+    [$roles, $permissions] = $this->fetchRolesAndPermissions();
+
+    $this->setTitle('Roles y permisos');
+    $this->addToData('roles'      , $roles);
+    $this->addToData('permissions', $permissions);
+    $this->setView('roles');
+    $this->render();
+  }
+
+  function post_role()
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $nombre = sanitize_input($_POST['nombre'] ?? '');
+      $slug   = sanitize_input($_POST['slug']   ?? '');
+
+      if (strlen($nombre) < 3) throw new Exception('El nombre debe tener al menos 3 caracteres.');
+      if (!preg_match('/^[a-z0-9-]{3,50}$/', $slug)) throw new Exception('El slug debe ser minúsculas, números y guiones (3-50 caracteres).');
+
+      $mgr = new QuetzalRoleManager();
+      $mgr->addRole($nombre, $slug);
+
+      Flasher::success(sprintf('Role <b>%s</b> creado con éxito.', $nombre));
+      Redirect::to('admin/roles');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
+  function editar_role($id = null)
+  {
+    $this->guardAdminAccess();
+
+    $id = (int) $id;
+    $role = Model::list('quetzal_roles', ['id' => $id], 1);
+    if (!$role) {
+      Flasher::error('No existe el role solicitado.');
+      Redirect::to('admin/roles');
+      exit;
+    }
+
+    $mgr         = new QuetzalRoleManager($role['slug']);
+    $allPerms    = Model::query('SELECT * FROM quetzal_permisos ORDER BY nombre ASC') ?: [];
+    $rolePerms   = array_map(fn($p) => $p['slug'], $mgr->getPermissions() ?: []);
+    $isProtected = in_array($role['slug'], ['admin', 'developer', 'worker'], true);
+
+    $this->setTitle(sprintf('Editar role: %s', $role['nombre']));
+    $this->addToData('role'        , $role);
+    $this->addToData('allPerms'    , $allPerms);
+    $this->addToData('rolePerms'   , $rolePerms);
+    $this->addToData('isProtected' , $isProtected);
+    $this->setView('editarRole');
+    $this->render();
+  }
+
+  function post_role_editar()
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $id        = (int) ($_POST['id'] ?? 0);
+      $nombre    = sanitize_input($_POST['nombre'] ?? '');
+      $slug      = sanitize_input($_POST['slug']   ?? '');
+      $permSlugs = $_POST['permisos'] ?? [];
+      if (!is_array($permSlugs)) $permSlugs = [];
+
+      if (!$role = Model::list('quetzal_roles', ['id' => $id], 1)) {
+        throw new Exception('No existe el role.');
+      }
+
+      $isProtected = in_array($role['slug'], ['admin', 'developer', 'worker'], true);
+
+      if (!$isProtected) {
+        // Actualizar nombre/slug solo si no es protegido
+        if (strlen($nombre) < 3) throw new Exception('El nombre debe tener al menos 3 caracteres.');
+        if (!preg_match('/^[a-z0-9-]{3,50}$/', $slug)) throw new Exception('Slug inválido.');
+
+        $mgr = new QuetzalRoleManager();
+        $mgr->updateRole($id, $nombre, $slug);
+        $role['slug'] = $slug; // para el sync de abajo
+      }
+
+      // Sincronizar permisos
+      $mgr = new QuetzalRoleManager($role['slug']);
+      $currentPerms = array_map(fn($p) => $p['slug'], $mgr->getPermissions() ?: []);
+
+      // Quitar los que ya no están
+      foreach ($currentPerms as $current) {
+        if (!in_array($current, $permSlugs, true)) {
+          $mgr->deny($current);
+        }
+      }
+      // Agregar los nuevos
+      foreach ($permSlugs as $slugToAdd) {
+        if (!in_array($slugToAdd, $currentPerms, true)) {
+          $mgr->allow($slugToAdd);
+        }
+      }
+
+      Flasher::success('Role actualizado con éxito.');
+      Redirect::to('admin/editar_role/' . $id);
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
+  function borrar_role($id = null)
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_GET['_t'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $id = (int) $id;
+      if (!$role = Model::list('quetzal_roles', ['id' => $id], 1)) {
+        throw new Exception('No existe el role.');
+      }
+
+      // Verificar que no haya usuarios con ese role
+      $usersWithRole = Model::query('SELECT COUNT(*) AS n FROM quetzal_users WHERE role = :r', ['r' => $role['slug']]);
+      if (!empty($usersWithRole[0]['n'])) {
+        throw new Exception(sprintf('No se puede borrar: hay %d usuario(s) con este role.', $usersWithRole[0]['n']));
+      }
+
+      $mgr = new QuetzalRoleManager();
+      $mgr->removeRole($role['slug']);
+
+      Flasher::success(sprintf('Role <b>%s</b> eliminado.', $role['nombre']));
+      Redirect::to('admin/roles');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
+  function permisos()
+  {
+    $this->guardAdminAccess();
+    [, $permissions] = $this->fetchRolesAndPermissions();
+
+    $this->setTitle('Permisos');
+    $this->addToData('permissions', $permissions);
+    $this->setView('permisos');
+    $this->render();
+  }
+
+  function post_permiso()
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $nombre      = sanitize_input($_POST['nombre']      ?? '');
+      $slug        = sanitize_input($_POST['slug']        ?? '');
+      $descripcion = sanitize_input($_POST['descripcion'] ?? '');
+
+      if (strlen($nombre) < 3) throw new Exception('El nombre debe tener al menos 3 caracteres.');
+      if (!preg_match('/^[a-z0-9-]{3,50}$/', $slug)) throw new Exception('El slug debe ser minúsculas, números y guiones (3-50 caracteres).');
+
+      $mgr = new QuetzalRoleManager();
+      $mgr->addPermission($nombre, $slug, $descripcion ?: null);
+
+      Flasher::success(sprintf('Permiso <b>%s</b> creado.', $nombre));
+      Redirect::to('admin/permisos');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
+  function post_permiso_editar()
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $id          = (int) ($_POST['id'] ?? 0);
+      $nombre      = sanitize_input($_POST['nombre']      ?? '');
+      $descripcion = sanitize_input($_POST['descripcion'] ?? '');
+
+      if (!$p = Model::list('quetzal_permisos', ['id' => $id], 1)) {
+        throw new Exception('No existe el permiso.');
+      }
+      if (strlen($nombre) < 3) throw new Exception('El nombre debe tener al menos 3 caracteres.');
+
+      // Actualizamos solo nombre y descripción; el slug es estable para no romper código que lo verifique.
+      if (!Model::update('quetzal_permisos', ['id' => $id], ['nombre' => $nombre, 'descripcion' => $descripcion ?: null])) {
+        throw new Exception('No se pudo actualizar el permiso.');
+      }
+
+      Flasher::success('Permiso actualizado.');
+      Redirect::to('admin/permisos');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
+  function borrar_permiso($id = null)
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_GET['_t'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $id = (int) $id;
+      if (!$p = Model::list('quetzal_permisos', ['id' => $id], 1)) {
+        throw new Exception('No existe el permiso.');
+      }
+
+      $mgr = new QuetzalRoleManager();
+      $mgr->removePermission($p['slug']);
+
+      Flasher::success(sprintf('Permiso <b>%s</b> eliminado.', $p['nombre']));
+      Redirect::to('admin/permisos');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
   function botones()
   {
     $this->setTitle('Botones');
