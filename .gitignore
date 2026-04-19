@@ -1,0 +1,13 @@
+composer.phar
+/vendor/
+vendor
+app/composer.lock
+.composer/
+
+app/config/config.php
+app/controllers/pruebasController.php
+templates/views/pruebas/
+.env
+
+# Auto-removed by installer
+install.php
