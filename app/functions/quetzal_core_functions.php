@@ -259,6 +259,55 @@ function get_option($option)
 }
 
 /**
+ * Guarda o actualiza una opción de configuración en la db.
+ *
+ * @param string $option
+ * @param mixed $val
+ * @return mixed
+ */
+function save_option(string $option, $val)
+{
+	return optionModel::save($option, $val);
+}
+
+/**
+ * Retorna el color del tema guardado en options con un fallback seguro.
+ * Los colores se almacenan en options bajo keys "theme_*".
+ *
+ * @param string $key  Clave sin prefijo (ej. 'primary', 'primary_dark', 'sidebar')
+ * @param string $fallback Hex por defecto si no existe la opción
+ * @return string
+ */
+function theme_color(string $key = 'primary', string $fallback = '#f59e0b'): string
+{
+	static $cache = null;
+	if ($cache === null) $cache = [];
+
+	if (isset($cache[$key])) return $cache[$key];
+
+	$stored = get_option('theme_' . $key);
+	$color  = (is_string($stored) && preg_match('/^#[0-9a-f]{3,8}$/i', $stored)) ? $stored : $fallback;
+
+	return $cache[$key] = $color;
+}
+
+/**
+ * Retorna el set completo de colores del tema (usado por el layout para
+ * inyectar variables CSS en :root).
+ *
+ * @return array
+ */
+function theme_colors(): array
+{
+	return [
+		'primary'      => theme_color('primary'     , '#f59e0b'),
+		'primary_dark' => theme_color('primary_dark', '#b45309'),
+		'sidebar_bg'   => theme_color('sidebar_bg'  , '#1f2937'),
+		'sidebar_fg'   => theme_color('sidebar_fg'  , '#e5e7eb'),
+	];
+}
+
+/**
  * Generar un link dinámico con parámetros get y token
  * @param string $url
  * @param array $params

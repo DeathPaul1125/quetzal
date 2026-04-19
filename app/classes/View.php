@@ -16,28 +16,28 @@ class View {
    *
    * @var string
    */
-  private $baseDir        = TEMPLATES;
+  private $baseDir        = null;
 
   /**
    * El directorio base para el directorio de las vistas
    *
    * @var string
    */
-  private $viewsDir       = VIEWS;
+  private $viewsDir       = null;
 
   /**
    * El controlador actual cargado
    *
    * @var string
    */
-  private $controller     = CONTROLLER;
+  private $controller     = null;
 
   /**
    * Separador de directorios
    *
    * @var string
    */
-  private $DS             = DS;
+  private $DS             = null;
 
   /**
    * Instancia del motor Blade
@@ -78,6 +78,14 @@ class View {
 
   function __construct($engine = null)
   {
+    // Resolvemos constantes en el constructor porque algunas (CONTROLLER)
+    // se definen en fases tardías del bootstrap y los métodos estáticos
+    // de esta clase pueden llamarse antes (desde QuetzalPluginManager::load).
+    $this->baseDir    = defined('TEMPLATES')  ? TEMPLATES  : '';
+    $this->viewsDir   = defined('VIEWS')      ? VIEWS      : '';
+    $this->controller = defined('CONTROLLER') ? CONTROLLER : '';
+    $this->DS         = defined('DS')         ? DS         : DIRECTORY_SEPARATOR;
+
     if ($engine !== null) {
       $this->templateEngine = $engine;
     }
