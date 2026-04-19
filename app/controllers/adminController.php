@@ -755,14 +755,45 @@ class adminController extends Controller implements ControllerInterface
     }
   }
 
+  /**
+   * Listado de permisos con búsqueda.
+   */
   function permisos()
   {
     $this->guardAdminAccess();
-    [, $permissions] = $this->fetchRolesAndPermissions();
+
+    $q = sanitize_input((string)($_GET['q'] ?? ''));
+
+    $whereSql = '';
+    $params = [];
+    if ($q !== '') {
+      $whereSql = 'WHERE p.nombre LIKE :q OR p.slug LIKE :q OR p.descripcion LIKE :q';
+      $params['q'] = '%' . $q . '%';
+    }
+
+    $sql = sprintf('
+      SELECT p.*, COUNT(rp.id_role) AS role_count
+      FROM quetzal_permisos p
+      LEFT JOIN quetzal_roles_permisos rp ON rp.id_permiso = p.id
+      %s
+      GROUP BY p.id
+      ORDER BY p.nombre ASC
+    ', $whereSql);
+
+    $permissions = Model::query($sql, $params) ?: [];
 
     $this->setTitle('Permisos');
     $this->addToData('permissions', $permissions);
-    $this->setView('permisos');
+    $this->addToData('filters'    , ['q' => $q]);
+    $this->setView('permisos/index');
+    $this->render();
+  }
+
+  function crear_permiso()
+  {
+    $this->guardAdminAccess();
+    $this->setTitle('Nuevo permiso');
+    $this->setView('permisos/crear');
     $this->render();
   }
 
@@ -793,6 +824,54 @@ class adminController extends Controller implements ControllerInterface
     }
   }
 
+  function ver_permiso($id = null)
+  {
+    $this->guardAdminAccess();
+
+    $id = (int) $id;
+    $permiso = Model::list('quetzal_permisos', ['id' => $id], 1);
+    if (!$permiso) {
+      Flasher::error('No existe el permiso.');
+      Redirect::to('admin/permisos');
+      exit;
+    }
+
+    // Roles que usan este permiso
+    $roles = Model::query('
+      SELECT r.* FROM quetzal_roles r
+      INNER JOIN quetzal_roles_permisos rp ON rp.id_role = r.id
+      WHERE rp.id_permiso = :id
+      ORDER BY r.nombre ASC
+    ', ['id' => $id]) ?: [];
+
+    $isProtected = in_array($permiso['slug'], ['admin-access'], true);
+
+    $this->setTitle('Permiso: ' . $permiso['nombre']);
+    $this->addToData('permiso'    , $permiso);
+    $this->addToData('roles'      , $roles);
+    $this->addToData('isProtected', $isProtected);
+    $this->setView('permisos/ver');
+    $this->render();
+  }
+
+  function editar_permiso($id = null)
+  {
+    $this->guardAdminAccess();
+
+    $id = (int) $id;
+    $permiso = Model::list('quetzal_permisos', ['id' => $id], 1);
+    if (!$permiso) {
+      Flasher::error('No existe el permiso.');
+      Redirect::to('admin/permisos');
+      exit;
+    }
+
+    $this->setTitle('Editar permiso: ' . $permiso['nombre']);
+    $this->addToData('permiso', $permiso);
+    $this->setView('permisos/editar');
+    $this->render();
+  }
+
   function post_permiso_editar()
   {
     try {
@@ -810,13 +889,13 @@ class adminController extends Controller implements ControllerInterface
       }
       if (strlen($nombre) < 3) throw new Exception('El nombre debe tener al menos 3 caracteres.');
 
-      // Actualizamos solo nombre y descripción; el slug es estable para no romper código que lo verifique.
+      // El slug es inmutable porque otros lugares lo referencian por código
       if (!Model::update('quetzal_permisos', ['id' => $id], ['nombre' => $nombre, 'descripcion' => $descripcion ?: null])) {
         throw new Exception('No se pudo actualizar el permiso.');
       }
 
       Flasher::success('Permiso actualizado.');
-      Redirect::to('admin/permisos');
+      Redirect::to('admin/ver_permiso/' . $id);
 
     } catch (Exception $e) {
       Flasher::error($e->getMessage());
@@ -1161,137 +1240,261 @@ class adminController extends Controller implements ControllerInterface
   ////////////////////////////////////////////////////
   ////////////////////////////////////////////////////
   ////////////////////////////////////////////////////
+  /**
+   * Listado de productos con búsqueda y orden.
+   */
   function productos()
   {
-    // Formulario para agregar nuevo registro
-    $form= new QuetzalFormBuilder('agregar-producto', 'agregar-producto', ['needs-validation'], 'admin/post_productos', true, true);
-    
-    // Inputs
-    $form->addCustomFields(insert_inputs());
-    $form->addTextField('nombre', 'Nombre del producto', ['form-control'], 'product-name', true);
-    $form->addTextField('sku', 'SKU o número de rastreo', ['form-control'], 'product-sku');
-    $form->addTextareaField('descripcion', 'Descripción del producto', 4, 5, ['form-control'], 'product-description');
-    $form->addNumberField('precio', 'Precio principal', 1, 999999999, 'any', null, ['form-control'], 'product-price', true);
-    $form->addNumberField('precio_comparacion', 'Precio de comparación', 1, 999999999, 'any', null, ['form-control'], 'product-compare-price');
+    $q    = sanitize_input((string)($_GET['q'] ?? ''));
+    $sort = (string)($_GET['sort'] ?? 'id');
+    $dir  = strtolower((string)($_GET['dir'] ?? 'desc')) === 'asc' ? 'ASC' : 'DESC';
 
-    $form->addFileField('imagen', 'Imagen principal del producto', ['form-control'], 'product-imagen', true);
+    $allowedSort = ['id', 'nombre', 'sku', 'precio', 'stock', 'creado'];
+    if (!in_array($sort, $allowedSort, true)) $sort = 'id';
 
-    $form->addCustomFields('<hr>');
+    $whereSql = '';
+    $params   = [];
+    if ($q !== '') {
+      $whereSql = 'WHERE nombre LIKE :q OR sku LIKE :q OR descripcion LIKE :q';
+      $params['q'] = '%' . $q . '%';
+    }
 
-    $form->addCheckboxField('rastrear_stock', 'Seguimiento de stock', 'true', ['form-check-input'], 'trackStock', false);
-    $form->addNumberField('stock', 'Unidades disponibles', 1, 999999999, 1, null, ['form-control'], 'stock', false);
-
-    $form->addButton('submit', 'submit', 'Agregar producto', ['btn btn-success'], 'submit-button');
+    $sql       = sprintf('SELECT * FROM productos %s ORDER BY %s %s', $whereSql, $sort, $dir);
+    $productos = PaginationHandler::paginate($sql, $params, 15);
 
     $this->setTitle('Productos');
-    $this->addToData('form'     , $form->getFormHtml());
-    $this->addToData('productos', productoModel::all_paginated());
-    $this->addToData('slug'     , 'productos');
-    $this->setView('productos/productos');
+    $this->addToData('productos', $productos);
+    $this->addToData('filters'  , ['q' => $q, 'sort' => $sort, 'dir' => $dir]);
+    $this->setView('productos/index');
     $this->render();
   }
 
-  function post_productos()
+  /**
+   * Formulario para crear un nuevo producto.
+   */
+  function crear_producto()
+  {
+    $this->setTitle('Nuevo producto');
+    $this->setView('productos/crear');
+    $this->render();
+  }
+
+  /**
+   * Procesa creación de producto con upload de imagen.
+   */
+  function post_crear_producto()
   {
     try {
-      if (!check_posted_data(['nombre','sku','descripcion','precio','precio_comparacion','stock'], $_POST)) {
-        throw new Exception('Por favor completa el formulario.');
-      }
-
-      if (!Csrf::validate($_POST['csrf'])) {
+      if (!Csrf::validate($_POST['csrf'] ?? '')) {
         throw new Exception(get_quetzal_message(0));
       }
 
-      // Definición de variables
-      array_map('sanitize_input', $_POST);
-      $nombre             = $_POST['nombre'];
-      $sku                = $_POST["sku"];
-      $descripcion        = $_POST["descripcion"];
-      $precio             = (float) $_POST["precio"];
-      $precio_comparacion = (float) $_POST["precio_comparacion"];
-      $rastrear_stock     = isset($_POST["rastrear_stock"]) ? 1 : 0;
-      $stock              = (int) $_POST["stock"];
-      $imagen             = $_FILES["imagen"];
-      $errorMessage       = '';
-      $errors             = 0;
+      $nombre             = sanitize_input($_POST['nombre']             ?? '');
+      $sku                = sanitize_input($_POST['sku']                ?? '');
+      $descripcion        = sanitize_input($_POST['descripcion']        ?? '');
+      $precio             = (float) ($_POST['precio']             ?? 0);
+      $precio_comparacion = (float) ($_POST['precio_comparacion'] ?? 0);
+      $rastrear_stock     = isset($_POST['rastrear_stock']) ? 1 : 0;
+      $stock              = (int) ($_POST['stock'] ?? 0);
 
-      // Crear slug con base al nombre del producto
-      $slugify = new Slugify();
+      if (strlen($nombre) < 3 || strlen($nombre) > 150) {
+        throw new Exception('El nombre debe tener entre 3 y 150 caracteres.');
+      }
+      if ($precio <= 0) {
+        throw new Exception('El precio debe ser mayor que 0.');
+      }
+      if ($precio_comparacion > 0 && $precio_comparacion < $precio) {
+        throw new Exception('El precio de comparación debe ser mayor al precio principal.');
+      }
+
+      $slugify = new Cocur\Slugify\Slugify();
       $slug    = $slugify->slugify($nombre);
 
-      // Verificar que no exista ya un producto con el sku si es que no está vacío
-      $sql = 'SELECT * FROM productos WHERE sku = :sku OR nombre = :nombre OR slug = :slug';
-      if (productoModel::query($sql, ['sku' => $sku, 'nombre' => $nombre, 'slug' => $slug])) {
-        throw new Exception('Ya existe un producto registrado con el mismo SKU o nombre.');
-      }
+      // Unicidad
+      $dup = productoModel::query(
+        'SELECT id FROM productos WHERE (sku = :sku AND sku != "") OR nombre = :nombre OR slug = :slug',
+        ['sku' => $sku, 'nombre' => $nombre, 'slug' => $slug]
+      );
+      if ($dup) throw new Exception('Ya existe un producto con ese SKU, nombre o slug.');
 
-      // Validar longitud del nombre, no mayor a 150 caracteres
-      if (strlen($nombre) > 150) {
-        $errorMessage .= '- El nombre del producto debe ser menor a 150 caracteres.' . PHP_EOL;
-        $errors++;
-      }
-
-      // Validar el precio regular del producto
-      if ($precio == 0) {
-        $errorMessage .= '- Ingresa un precio mayor a 0.' . PHP_EOL;
-        $errors++;
-      }
-
-      // Validar el precio de comparación si no es igual a 0
-      if ($precio_comparacion != 0 && $precio_comparacion < $precio) {
-        $errorMessage .= '- El precio de comparación debe ser mayor al precio principal del producto.' . PHP_EOL;
-        $errors++;
-      }
-
-      // Validación de la imagen
-      if ($imagen['error'] !== 0) {
-        $errorMessage .= '- Selecciona una imagen de producto válida por favor.' . PHP_EOL;
-        $errors++;
-      }
-
-      // Procesar imagen
-      $tmp_name = $imagen['tmp_name'];
-      $filename = $imagen['name'];
-      $type     = $imagen['type'];
-      $ext      = pathinfo($filename, PATHINFO_EXTENSION);
-      $new_name = generate_filename() . '.' . $ext;
-
-      if (!move_uploaded_file($tmp_name, UPLOADS . $new_name)) {
-        $errorMessage .= '- Hubo un problema al subir el archivo de imagen.' . PHP_EOL;
-        $errors++;
-      }
-
-      if ($errors > 0) {
-        if (is_file(UPLOADS . $new_name)) {
-          unlink(UPLOADS . $new_name);
+      // Procesar imagen (opcional)
+      $imagenFilename = null;
+      if (!empty($_FILES['imagen']['name']) && $_FILES['imagen']['error'] === 0) {
+        $tmp       = $_FILES['imagen']['tmp_name'];
+        $ext       = pathinfo($_FILES['imagen']['name'], PATHINFO_EXTENSION);
+        $new_name  = generate_filename() . '.' . strtolower($ext);
+        if (!move_uploaded_file($tmp, UPLOADS . $new_name)) {
+          throw new Exception('No se pudo subir la imagen.');
         }
-        throw new Exception($errorMessage);
+        $imagenFilename = $new_name;
       }
 
-      // Array de información del producto
-      $data =
-      [
+      $data = [
         'nombre'             => $nombre,
         'slug'               => $slug,
-        'sku'                => empty($sku) ? random_password(8, 'numeric') : $sku,
+        'sku'                => $sku !== '' ? $sku : random_password(8, 'numeric'),
         'descripcion'        => $descripcion,
         'precio'             => $precio,
         'precio_comparacion' => $precio_comparacion,
         'rastrear_stock'     => $rastrear_stock,
-        'stock'              => empty($stock) ? 0 : $stock,
-        'imagen'             => $new_name,
-        'creado'             => now()
+        'stock'              => $stock,
+        'imagen'             => $imagenFilename,
+        'creado'             => now(),
       ];
 
-      // Agregar producto a la base de datos
       if (!$id = productoModel::insertOne($data)) {
-        throw new Exception('Hubo un error, intenta de nuevo.');
+        throw new Exception('Hubo un error al crear el producto.');
       }
 
-      $producto = productoModel::by_id($id);
+      Flasher::success(sprintf('Producto <b>%s</b> creado.', $nombre));
+      Redirect::to('admin/ver_producto/' . $id);
 
-      Flasher::success(sprintf('Nuevo producto <b>%s</b> agregado con éxito.', $producto['nombre']));
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
       Redirect::back();
+    }
+  }
+
+  /**
+   * Detalle sólo lectura.
+   */
+  function ver_producto($id = null)
+  {
+    $id       = (int) $id;
+    $producto = productoModel::by_id($id);
+    if (empty($producto)) {
+      Flasher::error('El producto no existe.');
+      Redirect::to('admin/productos');
+      exit;
+    }
+
+    $this->setTitle($producto['nombre']);
+    $this->addToData('producto', $producto);
+    $this->setView('productos/ver');
+    $this->render();
+  }
+
+  /**
+   * Form de edición.
+   */
+  function editar_producto($id = null)
+  {
+    $id       = (int) $id;
+    $producto = productoModel::by_id($id);
+    if (empty($producto)) {
+      Flasher::error('El producto no existe.');
+      Redirect::to('admin/productos');
+      exit;
+    }
+
+    $this->setTitle('Editar: ' . $producto['nombre']);
+    $this->addToData('producto', $producto);
+    $this->setView('productos/editar');
+    $this->render();
+  }
+
+  /**
+   * Procesa la edición. Imagen opcional (mantiene actual si no se sube una nueva).
+   */
+  function post_editar_producto()
+  {
+    try {
+      if (!Csrf::validate($_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $id       = (int) ($_POST['id'] ?? 0);
+      $producto = productoModel::by_id($id);
+      if (empty($producto)) throw new Exception('El producto no existe.');
+
+      $nombre             = sanitize_input($_POST['nombre']             ?? '');
+      $sku                = sanitize_input($_POST['sku']                ?? '');
+      $descripcion        = sanitize_input($_POST['descripcion']        ?? '');
+      $precio             = (float) ($_POST['precio']             ?? 0);
+      $precio_comparacion = (float) ($_POST['precio_comparacion'] ?? 0);
+      $rastrear_stock     = isset($_POST['rastrear_stock']) ? 1 : 0;
+      $stock              = (int) ($_POST['stock'] ?? 0);
+
+      if (strlen($nombre) < 3 || strlen($nombre) > 150) {
+        throw new Exception('El nombre debe tener entre 3 y 150 caracteres.');
+      }
+      if ($precio <= 0) throw new Exception('El precio debe ser mayor que 0.');
+      if ($precio_comparacion > 0 && $precio_comparacion < $precio) {
+        throw new Exception('El precio de comparación debe ser mayor al precio principal.');
+      }
+
+      $slugify = new Cocur\Slugify\Slugify();
+      $slug    = $slugify->slugify($nombre);
+
+      $dup = productoModel::query(
+        'SELECT id FROM productos WHERE ((sku = :sku AND sku != "") OR nombre = :nombre OR slug = :slug) AND id != :id LIMIT 1',
+        ['sku' => $sku, 'nombre' => $nombre, 'slug' => $slug, 'id' => $id]
+      );
+      if ($dup) throw new Exception('Otro producto ya tiene ese SKU, nombre o slug.');
+
+      $update = [
+        'nombre'             => $nombre,
+        'slug'               => $slug,
+        'sku'                => $sku !== '' ? $sku : $producto['sku'],
+        'descripcion'        => $descripcion,
+        'precio'             => $precio,
+        'precio_comparacion' => $precio_comparacion,
+        'rastrear_stock'     => $rastrear_stock,
+        'stock'              => $stock,
+      ];
+
+      // Nueva imagen opcional
+      if (!empty($_FILES['imagen']['name']) && $_FILES['imagen']['error'] === 0) {
+        $ext      = pathinfo($_FILES['imagen']['name'], PATHINFO_EXTENSION);
+        $new_name = generate_filename() . '.' . strtolower($ext);
+        if (!move_uploaded_file($_FILES['imagen']['tmp_name'], UPLOADS . $new_name)) {
+          throw new Exception('No se pudo subir la nueva imagen.');
+        }
+        // Borra la anterior si existe
+        if (!empty($producto['imagen']) && is_file(UPLOADS . $producto['imagen'])) {
+          @unlink(UPLOADS . $producto['imagen']);
+        }
+        $update['imagen'] = $new_name;
+      }
+
+      if (!productoModel::update(productoModel::$t1, ['id' => $id], $update)) {
+        throw new Exception('No se pudo actualizar el producto.');
+      }
+
+      Flasher::success(sprintf('Producto <b>%s</b> actualizado.', $nombre));
+      Redirect::to('admin/ver_producto/' . $id);
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
+  /**
+   * Elimina un producto y su imagen asociada.
+   */
+  function borrar_producto($id = null)
+  {
+    try {
+      if (!Csrf::validate($_GET['_t'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $id       = (int) $id;
+      $producto = productoModel::by_id($id);
+      if (empty($producto)) throw new Exception('El producto no existe.');
+
+      if (!productoModel::remove(productoModel::$t1, ['id' => $id], 1)) {
+        throw new Exception('No se pudo eliminar el producto.');
+      }
+
+      // Limpiar imagen
+      if (!empty($producto['imagen']) && is_file(UPLOADS . $producto['imagen'])) {
+        @unlink(UPLOADS . $producto['imagen']);
+      }
+
+      Flasher::success(sprintf('Producto <b>%s</b> eliminado.', $producto['nombre']));
+      Redirect::to('admin/productos');
 
     } catch (Exception $e) {
       Flasher::error($e->getMessage());

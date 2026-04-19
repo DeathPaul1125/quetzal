@@ -16,12 +16,12 @@
       ['label' => 'Dashboard', 'icon' => 'ri-dashboard-line', 'url' => 'admin', 'controller' => 'admin', 'method' => 'index', 'permission' => null],
     ]],
     ['group' => 'Gestión', 'items' => [
-      ['label' => 'Usuarios',   'icon' => 'ri-user-line',      'url' => 'admin/usuarios',   'controller' => 'admin', 'method' => 'usuarios',   'permission' => 'users-read'],
-      ['label' => 'Productos',  'icon' => 'ri-archive-line',   'url' => 'admin/productos',  'controller' => 'admin', 'method' => 'productos',  'permission' => 'products-read'],
+      ['label' => 'Usuarios',   'icon' => 'ri-user-line',      'url' => 'admin/usuarios',   'controller' => 'admin', 'method' => 'usuarios',   'activeMethods' => ['crear_usuario','editar_usuario','ver_usuario'],    'permission' => 'users-read'],
+      ['label' => 'Productos',  'icon' => 'ri-archive-line',   'url' => 'admin/productos',  'controller' => 'admin', 'method' => 'productos',  'activeMethods' => ['crear_producto','editar_producto','ver_producto'], 'permission' => 'products-read'],
     ]],
     ['group' => 'Sistema', 'items' => [
-      ['label' => 'Roles',        'icon' => 'ri-shield-user-line', 'url' => 'admin/roles',        'controller' => 'admin', 'method' => 'roles',       'activeMethods' => ['editar_role'], 'permission' => 'admin-access'],
-      ['label' => 'Permisos',     'icon' => 'ri-key-2-line',       'url' => 'admin/permisos',     'controller' => 'admin', 'method' => 'permisos',    'permission' => 'admin-access'],
+      ['label' => 'Roles',        'icon' => 'ri-shield-user-line', 'url' => 'admin/roles',        'controller' => 'admin', 'method' => 'roles',       'activeMethods' => ['crear_role','editar_role','ver_role'],         'permission' => 'admin-access'],
+      ['label' => 'Permisos',     'icon' => 'ri-key-2-line',       'url' => 'admin/permisos',     'controller' => 'admin', 'method' => 'permisos',    'activeMethods' => ['crear_permiso','editar_permiso','ver_permiso'], 'permission' => 'admin-access'],
       ['label' => 'Plugins',      'icon' => 'ri-plug-line',        'url' => 'admin/plugins',      'controller' => 'admin', 'method' => 'plugins',     'permission' => 'admin-access'],
       ['label' => 'Migraciones',  'icon' => 'ri-database-2-line',  'url' => 'admin/migraciones',  'controller' => 'admin', 'method' => 'migraciones', 'permission' => 'admin-access'],
       ['label' => 'Apariencia',   'icon' => 'ri-palette-line',     'url' => 'admin/apariencia',   'controller' => 'admin', 'method' => 'apariencia',  'permission' => 'admin-access'],
