@@ -242,13 +242,17 @@ class View
       return $view;
     }
 
-    // Vista ya con puntos (ej. "admin.perfil")
-    if (strpos($view, '.') !== false) {
-      return 'views.' . $view;
-    }
+    // Normaliza separadores: '/' y '\' → '.' para compat con setView('foo/bar')
+    $normalized = str_replace(['/', '\\'], '.', $view);
 
-    // Por defecto: carpeta del controlador actual + sufijo View
-    return 'views.' . $this->controller . '.' . $view . 'View';
+    // El valor es siempre relativo a la carpeta del controlador actual.
+    // Añade el sufijo "View" al último segmento si no lo trae ya.
+    $segments = explode('.', $normalized);
+    $last     = array_pop($segments);
+    if (!str_ends_with($last, 'View')) $last .= 'View';
+    $segments[] = $last;
+
+    return 'views.' . $this->controller . '.' . implode('.', $segments);
   }
 
   /**
