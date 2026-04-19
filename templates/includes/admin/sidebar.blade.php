@@ -2,10 +2,11 @@
   // Helper local: determina si la ruta actual matchea el slug del menu
   $current = defined('CONTROLLER') ? CONTROLLER : '';
   $method  = defined('METHOD')     ? METHOD     : '';
-  $isActive = function($controller, $methodSlug = null) use ($current, $method) {
+  $isActive = function($controller, $methodSlug = null, $extra = []) use ($current, $method) {
     if ($controller !== $current) return false;
     if ($methodSlug === null) return true;
-    return $method === $methodSlug;
+    if ($method === $methodSlug) return true;
+    return in_array($method, (array) $extra, true);
   };
 
   // Construye el menú. Los items respetan el permiso declarado; si está null,
@@ -19,8 +20,10 @@
       ['label' => 'Productos',  'icon' => 'ri-archive-line',   'url' => 'admin/productos',  'controller' => 'admin', 'method' => 'productos',  'permission' => 'products-read'],
     ]],
     ['group' => 'Sistema', 'items' => [
-      ['label' => 'Apariencia', 'icon' => 'ri-palette-line',   'url' => 'admin/apariencia', 'controller' => 'admin', 'method' => 'apariencia', 'permission' => 'admin-access'],
-      ['label' => 'Perfil',     'icon' => 'ri-id-card-line',   'url' => 'admin/perfil',     'controller' => 'admin', 'method' => 'perfil',     'permission' => null],
+      ['label' => 'Roles',      'icon' => 'ri-shield-user-line', 'url' => 'admin/roles',      'controller' => 'admin', 'method' => 'roles',      'activeMethods' => ['editar_role'], 'permission' => 'admin-access'],
+      ['label' => 'Permisos',   'icon' => 'ri-key-2-line',       'url' => 'admin/permisos',   'controller' => 'admin', 'method' => 'permisos',   'permission' => 'admin-access'],
+      ['label' => 'Apariencia', 'icon' => 'ri-palette-line',     'url' => 'admin/apariencia', 'controller' => 'admin', 'method' => 'apariencia', 'permission' => 'admin-access'],
+      ['label' => 'Perfil',     'icon' => 'ri-id-card-line',     'url' => 'admin/perfil',     'controller' => 'admin', 'method' => 'perfil',     'permission' => null],
     ]],
   ];
 @endphp
@@ -45,7 +48,7 @@
         @endphp
         @if($canSee)
           <a href="{{ $item['url'] }}"
-             class="flex items-center gap-3 px-6 py-2.5 text-sm transition {{ $isActive($item['controller'], $item['method']) ? 'active' : '' }}">
+             class="flex items-center gap-3 px-6 py-2.5 text-sm transition {{ $isActive($item['controller'], $item['method'], $item['activeMethods'] ?? []) ? 'active' : '' }}">
             <i class="{{ $item['icon'] }} text-lg"></i>
             <span>{{ $item['label'] }}</span>
           </a>
