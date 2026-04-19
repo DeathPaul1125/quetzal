@@ -2865,10 +2865,24 @@ function can_user(string $role, string $permission)
 	try {
 		$role= new QuetzalRoleManager($role);
 		return $role->can($permission);
-		
+
 	} catch (Exception $e) {
 		return false;
 	}
+}
+
+/**
+ * Atajo: verifica si el usuario loggeado tiene un permiso determinado.
+ * Resuelve el role desde la sesión automáticamente.
+ *
+ * @param string $permission
+ * @return boolean
+ */
+function user_can(string $permission): bool
+{
+	$user = get_user();
+	if (empty($user) || empty($user['role'])) return false;
+	return can_user($user['role'], $permission);
 }
 
 /**

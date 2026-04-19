@@ -50,9 +50,149 @@ class adminController extends Controller implements ControllerInterface
 
   function perfil()
   {
+    $user = get_user();
+    $permissions = [];
+
+    if (!empty($user['role'])) {
+      try {
+        $roleMgr     = new QuetzalRoleManager($user['role']);
+        $permissions = $roleMgr->getPermissions();
+      } catch (Exception $e) {
+        // Role no existe o inválido — no bloqueamos la vista
+      }
+    }
+
     $this->setTitle('Perfil de usuario');
+    $this->addToData('user'       , $user);
+    $this->addToData('permissions', $permissions);
     $this->setView('perfil');
     $this->render();
+  }
+
+  /**
+   * Actualiza el perfil del usuario loggeado.
+   */
+  function post_perfil()
+  {
+    try {
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $currentUser = get_user();
+      if (empty($currentUser['id'])) {
+        throw new Exception('No se pudo identificar al usuario en sesión.');
+      }
+
+      $username = sanitize_input($_POST['username'] ?? '');
+      $email    = sanitize_input($_POST['email']    ?? '');
+      $pwNew    = (string)($_POST['password']         ?? '');
+      $pwConf   = (string)($_POST['password_confirm'] ?? '');
+
+      if (!preg_match('/^[a-zA-Z0-9._-]{3,50}$/', $username)) {
+        throw new Exception('El nombre de usuario debe tener entre 3 y 50 caracteres alfanuméricos.');
+      }
+      if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        throw new Exception('El email no es válido.');
+      }
+
+      // Unicidad (excluyendo al propio usuario)
+      $sql = 'SELECT id FROM quetzal_users WHERE (username = :u OR email = :e) AND id != :id LIMIT 1';
+      if (Model::query($sql, ['u' => $username, 'e' => $email, 'id' => $currentUser['id']])) {
+        throw new Exception('Otro usuario ya usa ese nombre de usuario o email.');
+      }
+
+      $fields = [
+        'username' => $username,
+        'email'    => $email,
+      ];
+
+      if ($pwNew !== '' || $pwConf !== '') {
+        if ($pwNew !== $pwConf) {
+          throw new Exception('La contraseña y su confirmación no coinciden.');
+        }
+        if (strlen($pwNew) < 6) {
+          throw new Exception('La contraseña debe tener al menos 6 caracteres.');
+        }
+        $fields['password'] = password_hash($pwNew . AUTH_SALT, PASSWORD_BCRYPT);
+      }
+
+      if (!Model::update('quetzal_users', ['id' => $currentUser['id']], $fields)) {
+        throw new Exception('No se pudo actualizar el perfil.');
+      }
+
+      // Refrescar info en sesión
+      $updated = Model::list('quetzal_users', ['id' => $currentUser['id']], 1);
+      if ($updated) {
+        $GLOBALS['Quetzal_User'] = $updated;
+      }
+
+      Flasher::success('Perfil actualizado con éxito.');
+      Redirect::to('admin/perfil');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
+  /**
+   * Vista de personalización de apariencia (colores del tema).
+   * Requiere permiso admin-access.
+   */
+  function apariencia()
+  {
+    if (!user_can('admin-access')) {
+      Flasher::error('No tienes permiso para acceder a esta sección.');
+      Redirect::to('admin');
+    }
+
+    $this->setTitle('Apariencia del sistema');
+    $this->addToData('colors', theme_colors());
+    $this->addToData('presets', [
+      ['label' => 'Ámbar (default)', 'primary' => '#f59e0b', 'dark' => '#b45309'],
+      ['label' => 'Azul',            'primary' => '#3b82f6', 'dark' => '#1d4ed8'],
+      ['label' => 'Esmeralda',       'primary' => '#10b981', 'dark' => '#047857'],
+      ['label' => 'Violeta',         'primary' => '#8b5cf6', 'dark' => '#6d28d9'],
+      ['label' => 'Rosa',            'primary' => '#ec4899', 'dark' => '#be185d'],
+      ['label' => 'Rojo',            'primary' => '#ef4444', 'dark' => '#b91c1c'],
+      ['label' => 'Cian',            'primary' => '#06b6d4', 'dark' => '#0e7490'],
+      ['label' => 'Slate',           'primary' => '#475569', 'dark' => '#1e293b'],
+    ]);
+    $this->setView('apariencia');
+    $this->render();
+  }
+
+  /**
+   * Guarda los colores elegidos en la tabla options.
+   */
+  function post_apariencia()
+  {
+    try {
+      if (!user_can('admin-access')) {
+        throw new Exception('No tienes permiso para modificar la apariencia.');
+      }
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $keys = ['primary', 'primary_dark', 'sidebar_bg', 'sidebar_fg'];
+      foreach ($keys as $key) {
+        $val = trim((string)($_POST[$key] ?? ''));
+        if ($val === '') continue;
+        if (!preg_match('/^#[0-9a-f]{3,8}$/i', $val)) {
+          throw new Exception(sprintf('El color "%s" no es un hex válido.', $key));
+        }
+        save_option('theme_' . $key, $val);
+      }
+
+      Flasher::success('Apariencia actualizada.');
+      Redirect::to('admin/apariencia');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
   }
 
   function botones()
