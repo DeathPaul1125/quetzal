@@ -76,6 +76,8 @@ define('IMAGES'                  , ASSETS . 'images/');
 define('JS'                      , ASSETS . 'js/');
 define('COMPONENTS'              , JS . 'components/');
 define('PLUGINS'                 , ASSETS . 'plugins/');
+define('PLUGINS_PATH'            , ROOT . 'plugins' . DS); // Directorio raíz del sistema de plugins PHP
+define('PLUGINS_URL'             , URL . 'plugins/');      // URL pública base para assets de plugins
 define('UPLOADS'                 , ROOT . 'assets' . DS . 'uploads' . DS); // Carga de paths
 define('UPLOADED'                , ASSETS . 'uploads/'); // Carga con URL absolutas
 
@@ -131,10 +133,11 @@ define('WAITME'                  , filter_var($_ENV['USE_WAITME'], FILTER_VALIDA
 define('LIGHTBOX'                , filter_var($_ENV['USE_LIGHTBOX'], FILTER_VALIDATE_BOOLEAN)); // define si es requerido Lightbox
 
 /**
- * Motor de templates con Twig 3.6
- * @since 1.5.8
+ * Motor de templates con Blade (jenssegers/blade)
+ * @since 1.6.0
  */
-define('USE_TWIG'                , filter_var($_ENV['USE_TWIG'], FILTER_VALIDATE_BOOLEAN)); // define si será usado Twig por defecto para renderizar las vistas
+define('USE_BLADE'               , filter_var($_ENV['USE_BLADE'] ?? false, FILTER_VALIDATE_BOOLEAN)); // define si será usado Blade por defecto para renderizar las vistas
+define('BLADE_CACHE'             , ROOT . 'app' . DS . 'cache' . DS . 'blade'); // directorio de cache de Blade
 
 // Datos de la empresa / negocio / sistema
 define('SITE_CHARSET'            , $_ENV["APP_CHARSET"]);

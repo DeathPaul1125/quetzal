@@ -110,7 +110,8 @@ class Quetzal
     $this->init_load_config();
     $this->init_autoload(); // Inicializa el cargador de nuestras clases
     $this->init_load_functions();
-    
+    $this->init_load_plugins(); // Descubre y carga plugins habilitados
+
     try {
       QuetzalHookManager::runHook('init_set_up', $this);
       QuetzalHookManager::runHook('after_functions_loaded');
@@ -260,6 +261,27 @@ class Quetzal
   {
     require_once CLASSES . 'Autoloader.php';
     Autoloader::init();
+  }
+
+  /**
+   * Descubre y carga los plugins habilitados. Ejecuta el Init.php de cada uno
+   * para permitir que registren hooks, rutas, vistas y migraciones antes de
+   * que arranque el dispatch de la petición.
+   *
+   * @return void
+   */
+  private function init_load_plugins()
+  {
+    if (!class_exists('QuetzalPluginManager')) return;
+
+    try {
+      QuetzalPluginManager::getInstance()->load();
+      QuetzalHookManager::runHook('plugins_loaded');
+    } catch (Exception $e) {
+      if (function_exists('logger')) {
+        logger('Error al cargar plugins: ' . $e->getMessage());
+      }
+    }
   }
 
   /**

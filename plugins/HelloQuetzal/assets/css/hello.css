@@ -1,0 +1,7 @@
+/* Estilos del plugin HelloQuetzal */
+h1 {
+  background: linear-gradient(90deg, #FDBF00, #00a8ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}

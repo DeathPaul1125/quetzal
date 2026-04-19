@@ -231,19 +231,19 @@ class quetzalController extends Controller implements ControllerInterface
   }
 
   /**
-   * @since 1.5.5
-   * 
-   * Prueba general de uso de Twig
+   * @since 1.6.0
+   *
+   * Prueba general de uso de Blade
    *
    * @return void
    */
-  function twig()
+  function blade()
   {
     // Renderizar la plantilla
-    $this->setTitle('Mi página con Twig');
-    $this->addToData('name', 'Usuario bien Cool');
+    $this->setTitle('Mi página con Blade');
+    $this->addToData('name', 'Usuario Cool');
     $this->setView('test');
-    $this->setEngine('twig');
+    $this->setEngine('blade');
     $this->render();
   }
 

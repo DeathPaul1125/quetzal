@@ -31,7 +31,7 @@ class Controller {
   protected string $viewName      = 'index';
 
   /**
-   * El motor de renderizado, puede ser o twig
+   * El motor de renderizado, puede ser quetzal (PHP plano) o blade
    *
    * @var string
    */
@@ -122,7 +122,7 @@ class Controller {
     $this->method     = METHOD;
 
     // Validar el engine a utilizar por defecto
-    $this->engine     = USE_TWIG === true ? 'twig' : $this->engine;
+    $this->engine     = (defined('USE_BLADE') && USE_BLADE === true) ? 'blade' : $this->engine;
 
     // Definir el título por defecto de la página
     $this->addToData('title'      , 'Reemplaza el título de la página');

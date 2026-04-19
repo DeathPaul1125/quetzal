@@ -31,8 +31,8 @@
                 <label class="form-check-label" for="generar-vista">Crear carpeta y vista inicial</label>
               </div>
               <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" id="usar-twig" name="usar-twig">
-                <label class="form-check-label" for="usar-twig">Usar Twig</label>
+                <input class="form-check-input" type="checkbox" id="usar-blade" name="usar-blade">
+                <label class="form-check-label" for="usar-blade">Usar Blade</label>
               </div>
             </div>
 

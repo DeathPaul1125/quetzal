@@ -1,0 +1,23 @@
+# Protege los plugins: solo la carpeta /assets de cada plugin es accesible.
+# Todo lo demás (Init.php, controllers, models, classes, migrations, functions,
+# views, plugin.json) está bloqueado para acceso web directo.
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Permitir acceso a /plugins/<Name>/assets/**
+  RewriteRule ^[^/]+/assets/ - [L]
+
+  # Bloquear todo lo demás
+  RewriteRule .* - [F,L]
+</IfModule>
+
+# Fallback si mod_rewrite no está disponible
+<IfModule !mod_rewrite.c>
+  Require all denied
+</IfModule>
+
+# Denegar ejecución de PHP en cualquier lugar de /plugins (redundancia)
+<FilesMatch "\.php$">
+  Require all denied
+</FilesMatch>

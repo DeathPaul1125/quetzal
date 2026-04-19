@@ -21,7 +21,7 @@ Viene con un panel de administración pre-construido en **Tailwind CSS**, sistem
 - 🛒 **Carrito de compras** persistente.
 - 🔧 **Creator** — generador de controladores, modelos y vistas.
 - 🌐 **API REST** con autenticación por token.
-- 🔄 **Twig** opcional como motor de plantillas.
+- 🔄 **Blade** opcional como motor de plantillas (jenssegers/blade).
 
 ---
 

@@ -1,5 +1,5 @@
 <footer class="border-top bg-light py-5">
-  <!-- Contenido del pie de página común a todas las páginas -->
+  {{-- Contenido del pie de página común a todas las páginas --}}
   <div class="container">
     <div class="row">
       <div class="col-12 text-center">
@@ -9,7 +9,7 @@
   </div>
 </footer>
 
-{% include "includes/scripts.twig" %}
+@include('includes.scripts')
 </body>
 
 </html>

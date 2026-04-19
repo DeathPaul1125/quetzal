@@ -36,8 +36,8 @@
                 <label class="form-check-label" for="generar-vista">Crear carpeta y vista inicial</label>
               </div>
               <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" id="usar-twig" name="usar-twig">
-                <label class="form-check-label" for="usar-twig">Usar Twig</label>
+                <input class="form-check-input" type="checkbox" id="usar-blade" name="usar-blade">
+                <label class="form-check-label" for="usar-blade">Usar Blade</label>
               </div>
             </div>
 
@@ -104,8 +104,8 @@
 
             <div class="mb-3">
               <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" id="usar-twig2" name="usar-twig" <?php echo USE_TWIG ? 'checked' : ''; ?>>
-                <label class="form-check-label" for="usar-twig2">Usar Twig</label>
+                <input class="form-check-input" type="checkbox" id="usar-blade2" name="usar-blade" <?php echo (defined('USE_BLADE') && USE_BLADE) ? 'checked' : ''; ?>>
+                <label class="form-check-label" for="usar-blade2">Usar Blade</label>
               </div>
             </div>
 

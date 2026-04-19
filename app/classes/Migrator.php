@@ -14,11 +14,13 @@ class Migrator
 
     protected PDO $pdo;
     protected string $path;
+    protected string $trackingTable;
 
-    public function __construct(PDO $pdo, string $path)
+    public function __construct(PDO $pdo, string $path, ?string $trackingTable = null)
     {
-        $this->pdo  = $pdo;
-        $this->path = rtrim($path, '/\\');
+        $this->pdo            = $pdo;
+        $this->path           = rtrim($path, '/\\');
+        $this->trackingTable  = $trackingTable ?: self::TRACKING_TABLE;
     }
 
     /**
@@ -26,7 +28,7 @@ class Migrator
      */
     public function ensureTrackingTable(): void
     {
-        $sql = 'CREATE TABLE IF NOT EXISTS `' . self::TRACKING_TABLE . '` (
+        $sql = 'CREATE TABLE IF NOT EXISTS `' . $this->trackingTable . '` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
             `migration` varchar(255) NOT NULL,
             `batch` int(11) NOT NULL,
@@ -59,7 +61,7 @@ class Migrator
      */
     public function executed(): array
     {
-        $stmt = $this->pdo->query('SELECT migration FROM `' . self::TRACKING_TABLE . '` ORDER BY id ASC');
+        $stmt = $this->pdo->query('SELECT migration FROM `' . $this->trackingTable . '` ORDER BY id ASC');
         return $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
     }
 
@@ -91,7 +93,7 @@ class Migrator
                     throw new RuntimeException("La migración $name no devuelve un objeto con método up().");
                 }
                 $migration->up($this->pdo);
-                $stmt = $this->pdo->prepare('INSERT INTO `' . self::TRACKING_TABLE . '` (migration, batch) VALUES (:m, :b)');
+                $stmt = $this->pdo->prepare('INSERT INTO `' . $this->trackingTable . '` (migration, batch) VALUES (:m, :b)');
                 $stmt->execute([':m' => $name, ':b' => $batch]);
                 $log[] = ['name' => $name, 'status' => 'ok', 'message' => 'Migrada'];
             } catch (Throwable $e) {
@@ -108,7 +110,7 @@ class Migrator
     public function rollback(int $steps = 1): array
     {
         $this->ensureTrackingTable();
-        $stmt = $this->pdo->prepare('SELECT DISTINCT batch FROM `' . self::TRACKING_TABLE . '` ORDER BY batch DESC LIMIT :n');
+        $stmt = $this->pdo->prepare('SELECT DISTINCT batch FROM `' . $this->trackingTable . '` ORDER BY batch DESC LIMIT :n');
         $stmt->bindValue(':n', $steps, PDO::PARAM_INT);
         $stmt->execute();
         $batches = $stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -116,7 +118,7 @@ class Migrator
         if (empty($batches)) return [['name' => null, 'status' => 'nothing', 'message' => 'Nada para revertir.']];
 
         $in = implode(',', array_map('intval', $batches));
-        $stmt = $this->pdo->query('SELECT migration FROM `' . self::TRACKING_TABLE . '` WHERE batch IN (' . $in . ') ORDER BY id DESC');
+        $stmt = $this->pdo->query('SELECT migration FROM `' . $this->trackingTable . '` WHERE batch IN (' . $in . ') ORDER BY id DESC');
         $toRollback = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
         $discovered = $this->discover();
@@ -131,7 +133,7 @@ class Migrator
                 if (is_object($migration) && method_exists($migration, 'down')) {
                     $migration->down($this->pdo);
                 }
-                $this->pdo->prepare('DELETE FROM `' . self::TRACKING_TABLE . '` WHERE migration = :m')->execute([':m' => $name]);
+                $this->pdo->prepare('DELETE FROM `' . $this->trackingTable . '` WHERE migration = :m')->execute([':m' => $name]);
                 $log[] = ['name' => $name, 'status' => 'ok', 'message' => 'Revertida'];
             } catch (Throwable $e) {
                 $log[] = ['name' => $name, 'status' => 'error', 'message' => $e->getMessage()];
@@ -159,7 +161,7 @@ class Migrator
                 $log[] = ['name' => $name, 'status' => 'error', 'message' => $e->getMessage()];
             }
         }
-        $this->pdo->exec('DROP TABLE IF EXISTS `' . self::TRACKING_TABLE . '`');
+        $this->pdo->exec('DROP TABLE IF EXISTS `' . $this->trackingTable . '`');
         return $log;
     }
 
@@ -180,7 +182,7 @@ class Migrator
 
     protected function nextBatch(): int
     {
-        $row = $this->pdo->query('SELECT COALESCE(MAX(batch), 0) + 1 FROM `' . self::TRACKING_TABLE . '`')->fetchColumn();
+        $row = $this->pdo->query('SELECT COALESCE(MAX(batch), 0) + 1 FROM `' . $this->trackingTable . '`')->fetchColumn();
         return (int)$row;
     }
 }

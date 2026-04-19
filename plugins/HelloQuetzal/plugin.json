@@ -1,0 +1,9 @@
+{
+  "name": "HelloQuetzal",
+  "version": "1.0.0",
+  "description": "Plugin de ejemplo que demuestra la API del sistema de plugins: controladores, vistas (Blade y PHP), migraciones, hooks y assets.",
+  "author": "Quetzal Team",
+  "min_quetzal_version": "1.6.0",
+  "min_php": "8.1",
+  "requires": []
+}

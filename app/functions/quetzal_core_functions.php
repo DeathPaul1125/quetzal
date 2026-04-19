@@ -1531,6 +1531,36 @@ function get_image($filename)
 }
 
 /**
+ * Genera la URL pública de un asset perteneciente a un plugin.
+ * Los assets viven en plugins/<Plugin>/assets/ y se sirven desde PLUGINS_URL.
+ *
+ * @param string $pluginName Nombre del plugin (debe coincidir con el folder)
+ * @param string $relative   Ruta relativa dentro de /assets del plugin (ej. 'css/style.css')
+ * @return string
+ */
+function plugin_asset(string $pluginName, string $relative): string
+{
+	$base = defined('PLUGINS_URL') ? PLUGINS_URL : (URL . 'plugins/');
+	return rtrim($base, '/') . '/' . $pluginName . '/assets/' . ltrim($relative, '/');
+}
+
+/**
+ * Atajo para retornar un plugin por nombre (manifiesto + estado),
+ * o null si no existe.
+ *
+ * @param string $name
+ * @return array|null
+ */
+function get_plugin(string $name): ?array
+{
+	if (!class_exists('QuetzalPluginManager')) return null;
+
+	$mgr = QuetzalPluginManager::getInstance();
+	$all = $mgr->discover();
+	return $all[$name] ?? null;
+}
+
+/**
  * Carga un asset que ha sido subido al sistema en la carpeta
  * de uploads definida por Quetzal framework
  *

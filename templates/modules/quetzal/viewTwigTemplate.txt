@@ -1,9 +1,0 @@
-{% extends "includes/template.twig" %}
-
-{% block title %}{{ title }}{% endblock %}
-
-{% block content %}
-  <h1>Plantilla versión 1.0.0</h1>
-  <p>{{ msg }}</p>
-  <p class="text-muted">Utilizando el motor de Twig.</p>
-{% endblock %}
