@@ -425,6 +425,189 @@ class QuetzalPluginManager
   }
 
   /**
+   * Instala un plugin desde un archivo ZIP subido.
+   *
+   * Flujo:
+   *   1. Abre el ZIP y busca un plugin.json (raíz o primer subdirectorio)
+   *   2. Valida el manifiesto (name, estructura básica)
+   *   3. Verifica que no exista ya una carpeta de plugin con ese nombre
+   *   4. Extrae los archivos con sanitización de path (previene zip-slip)
+   *   5. Deja el plugin en estado "descubierto" (el usuario lo instala/habilita
+   *      después con las acciones normales)
+   *
+   * @param string $zipPath Ruta absoluta al ZIP (típicamente $_FILES['x']['tmp_name'])
+   * @return array{name:string, version:string, extracted:int, path:string}
+   * @throws Exception en cualquier validación fallida
+   */
+  public function installFromZip(string $zipPath): array
+  {
+    if (!class_exists('ZipArchive')) {
+      throw new Exception('La extensión ZipArchive no está disponible en este servidor.');
+    }
+    if (!is_file($zipPath)) {
+      throw new Exception('El archivo ZIP no existe.');
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($zipPath) !== true) {
+      throw new Exception('No se pudo abrir el ZIP (formato inválido o corrupto).');
+    }
+
+    // Buscar plugin.json — aceptamos en la raíz o dentro de un único subdirectorio
+    $manifestContent = null;
+    $rootPrefix      = '';
+
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+      $entry = $zip->getNameIndex($i);
+      if (basename($entry) !== 'plugin.json') continue;
+
+      $parts = explode('/', str_replace('\\', '/', trim($entry, '/')));
+      if (count($parts) === 1) {
+        // plugin.json en la raíz
+        $manifestContent = $zip->getFromIndex($i);
+        $rootPrefix      = '';
+        break;
+      }
+      if (count($parts) === 2) {
+        // plugin.json dentro de UN subdirectorio (ej. MyPlugin/plugin.json)
+        $manifestContent = $zip->getFromIndex($i);
+        $rootPrefix      = $parts[0] . '/';
+        break;
+      }
+    }
+
+    if ($manifestContent === null) {
+      $zip->close();
+      throw new Exception('El ZIP no contiene plugin.json en la raíz ni en el primer subdirectorio.');
+    }
+
+    $manifest = json_decode($manifestContent, true);
+    if (!is_array($manifest) || empty($manifest['name'])) {
+      $zip->close();
+      throw new Exception('plugin.json es inválido o no declara el campo "name".');
+    }
+
+    $pluginName = (string) $manifest['name'];
+    if (!preg_match('/^[A-Za-z0-9_-]{1,100}$/', $pluginName)) {
+      $zip->close();
+      throw new Exception('El nombre del plugin debe ser alfanumérico (guiones y guiones bajos permitidos).');
+    }
+
+    $targetDir = self::pluginsDir() . $pluginName . DS;
+    if (is_dir($targetDir)) {
+      $zip->close();
+      throw new Exception(sprintf(
+        'Ya existe un plugin con el nombre "%s". Desinstálalo o elimínalo primero.',
+        $pluginName
+      ));
+    }
+
+    // Extracción segura
+    $targetReal = realpath(self::pluginsDir());
+    $extracted  = 0;
+    $created    = [];
+
+    try {
+      if (!@mkdir($targetDir, 0775, true)) {
+        throw new Exception('No se pudo crear el directorio del plugin. Revisa permisos.');
+      }
+      $created[] = $targetDir;
+
+      for ($i = 0; $i < $zip->numFiles; $i++) {
+        $entry = $zip->getNameIndex($i);
+        $entry = str_replace('\\', '/', $entry);
+
+        if ($rootPrefix !== '' && strpos($entry, $rootPrefix) !== 0) {
+          continue;
+        }
+        $relative = $rootPrefix !== '' ? substr($entry, strlen($rootPrefix)) : $entry;
+        if ($relative === '' || $relative === '.' || $relative === '..') continue;
+
+        // Prevención de zip-slip: ningún segmento puede ser '..' ni contener caracteres peligrosos
+        $segments = explode('/', $relative);
+        foreach ($segments as $seg) {
+          if ($seg === '..' || strpos($seg, "\0") !== false) {
+            throw new Exception(sprintf('Ruta no segura en ZIP: %s', $entry));
+          }
+        }
+
+        $destPath = $targetDir . implode(DS, $segments);
+
+        // Entrada de directorio
+        if (substr($relative, -1) === '/') {
+          if (!is_dir($destPath)) @mkdir($destPath, 0775, true);
+          continue;
+        }
+
+        // Archivo
+        $destDir = dirname($destPath);
+        if (!is_dir($destDir)) @mkdir($destDir, 0775, true);
+
+        // Verificación extra: realpath del destino debe estar dentro de plugins/
+        $destCanonicalDir = realpath($destDir);
+        if ($destCanonicalDir === false || strpos($destCanonicalDir, $targetReal) !== 0) {
+          throw new Exception(sprintf('Ruta fuera del directorio de plugins: %s', $entry));
+        }
+
+        $content = $zip->getFromIndex($i);
+        if ($content === false) continue;
+
+        if (@file_put_contents($destPath, $content) !== false) {
+          $extracted++;
+        }
+      }
+
+      $zip->close();
+
+      if ($extracted === 0) {
+        throw new Exception('No se extrajo ningún archivo del ZIP.');
+      }
+
+      if (!is_file($targetDir . 'plugin.json')) {
+        throw new Exception('La extracción no produjo un plugin.json válido.');
+      }
+
+      return [
+        'name'      => $pluginName,
+        'version'   => (string) ($manifest['version'] ?? '0.0.0'),
+        'extracted' => $extracted,
+        'path'      => $targetDir,
+      ];
+
+    } catch (Exception $e) {
+      // Rollback: borrar carpeta parcialmente creada
+      if (isset($zip) && $zip instanceof ZipArchive) {
+        @$zip->close();
+      }
+      $this->removeDirectory($targetDir);
+      throw $e;
+    }
+  }
+
+  /**
+   * Borra recursivamente un directorio. Usado como rollback si la extracción
+   * de un ZIP falla a mitad.
+   */
+  private function removeDirectory(string $dir): void
+  {
+    if (!is_dir($dir)) return;
+    $items = @scandir($dir);
+    if ($items === false) return;
+
+    foreach ($items as $item) {
+      if ($item === '.' || $item === '..') continue;
+      $path = $dir . DS . $item;
+      if (is_dir($path) && !is_link($path)) {
+        $this->removeDirectory($path);
+      } else {
+        @chmod($path, 0666);
+        @unlink($path);
+      }
+    }
+    @rmdir($dir);
+  }
+
+  /**
    * Limpia el cache compilado de Blade (plantillas compiladas a PHP).
    * Devuelve una entrada de log estandarizada.
    */

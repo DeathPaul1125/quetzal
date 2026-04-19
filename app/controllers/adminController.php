@@ -294,6 +294,72 @@ class adminController extends Controller implements ControllerInterface
   }
 
   /**
+   * Sube y extrae un plugin desde un archivo ZIP.
+   * El plugin queda "descubierto" (disponible); el usuario lo instala y
+   * habilita desde la UI después.
+   */
+  function post_plugin_upload()
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      if (empty($_FILES['plugin_zip']['name'])) {
+        throw new Exception('Selecciona un archivo ZIP.');
+      }
+
+      $file = $_FILES['plugin_zip'];
+
+      if ($file['error'] !== UPLOAD_ERR_OK) {
+        $uploadErrors = [
+          UPLOAD_ERR_INI_SIZE   => 'El archivo excede el límite del servidor (upload_max_filesize).',
+          UPLOAD_ERR_FORM_SIZE  => 'El archivo excede el límite del formulario.',
+          UPLOAD_ERR_PARTIAL    => 'El archivo se subió incompleto.',
+          UPLOAD_ERR_NO_FILE    => 'No se subió ningún archivo.',
+          UPLOAD_ERR_NO_TMP_DIR => 'Falta la carpeta temporal del servidor.',
+          UPLOAD_ERR_CANT_WRITE => 'No se pudo escribir el archivo al disco.',
+          UPLOAD_ERR_EXTENSION  => 'Una extensión de PHP detuvo la subida.',
+        ];
+        throw new Exception($uploadErrors[$file['error']] ?? 'Error desconocido al subir el archivo.');
+      }
+
+      // Validar extensión
+      $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+      if ($ext !== 'zip') {
+        throw new Exception('El archivo debe tener extensión .zip');
+      }
+
+      // Límite 20 MB
+      $maxSize = 20 * 1024 * 1024;
+      if ($file['size'] > $maxSize) {
+        throw new Exception(sprintf('El ZIP no puede superar %s MB.', $maxSize / 1024 / 1024));
+      }
+
+      // Verificar que es un ZIP real (magic bytes)
+      $fh = @fopen($file['tmp_name'], 'rb');
+      $magic = $fh ? fread($fh, 4) : '';
+      if ($fh) fclose($fh);
+      if (substr($magic, 0, 2) !== 'PK') {
+        throw new Exception('El archivo no parece ser un ZIP válido.');
+      }
+
+      $info = QuetzalPluginManager::getInstance()->installFromZip($file['tmp_name']);
+
+      Flasher::success(sprintf(
+        'Plugin <b>%s</b> v%s subido (%d archivo(s) extraídos). Ahora puedes instalarlo y habilitarlo.',
+        $info['name'], $info['version'], $info['extracted']
+      ));
+      Redirect::to('admin/plugins');
+
+    } catch (Exception $e) {
+      Flasher::error('Error al subir el plugin: ' . $e->getMessage());
+      Redirect::back();
+    }
+  }
+
+  /**
    * Reconstruye todos los plugins habilitados: limpia cache Blade,
    * valida manifiestos/dependencias y ejecuta migraciones pendientes.
    */
