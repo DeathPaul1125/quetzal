@@ -1,11 +1,3 @@
 {
-    "plugins": [
-        {
-            "name": "HelloQuetzal",
-            "version": "1.0.0",
-            "enabled": true,
-            "order": 0,
-            "installed_at": "2026-04-19 01:24:17"
-        }
-    ]
+    "plugins": []
 }

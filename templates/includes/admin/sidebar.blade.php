@@ -9,6 +9,16 @@
     return in_array($method, (array) $extra, true);
   };
 
+  // Hook para que los plugins registren items nuevos en el sidebar.
+  // Los plugins registran callbacks en 'admin_sidebar_items' que retornan
+  // arrays de grupos con el mismo shape que $nav abajo.
+  $pluginGroups = [];
+  if (class_exists('QuetzalHookManager')) {
+    foreach (QuetzalHookManager::getHookData('admin_sidebar_items') as $extra) {
+      if (is_array($extra)) $pluginGroups = array_merge($pluginGroups, $extra);
+    }
+  }
+
   // Construye el menú. Los items respetan el permiso declarado; si está null,
   // se muestra siempre a usuarios autenticados.
   $nav = [
@@ -29,6 +39,35 @@
       ['label' => 'Perfil',       'icon' => 'ri-id-card-line',     'url' => 'admin/perfil',       'controller' => 'admin', 'method' => 'perfil',      'permission' => null],
     ]],
   ];
+
+  // Merge inteligente con items aportados por plugins:
+  //   - Si un grupo aportado matchea uno existente por nombre, sus items se
+  //     añaden al grupo existente (sin duplicar el encabezado).
+  //   - Si es un grupo nuevo, se añade al final.
+  if (!empty($pluginGroups)) {
+    foreach ($pluginGroups as $pluginGroup) {
+      if (empty($pluginGroup['group']) || empty($pluginGroup['items'])) continue;
+
+      $foundIndex = null;
+      foreach ($nav as $i => $existing) {
+        if (($existing['group'] ?? null) === $pluginGroup['group']) {
+          $foundIndex = $i;
+          break;
+        }
+      }
+
+      if ($foundIndex !== null) {
+        // Añadir items al grupo existente
+        $nav[$foundIndex]['items'] = array_merge(
+          $nav[$foundIndex]['items'],
+          $pluginGroup['items']
+        );
+      } else {
+        // Grupo nuevo: agrégalo al final
+        $nav[] = $pluginGroup;
+      }
+    }
+  }
 @endphp
 
 <aside id="q-sidebar" class="hidden lg:flex lg:flex-col w-full lg:w-64 flex-shrink-0">

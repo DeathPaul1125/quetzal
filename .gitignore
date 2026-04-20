@@ -11,3 +11,6 @@ templates/views/pruebas/
 
 # Auto-removed by installer
 install.php
+
+# Plugin de desarrollo (no se versiona con el framework)
+/plugins/VisualCrudBuilder/

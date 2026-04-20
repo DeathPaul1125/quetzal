@@ -168,20 +168,20 @@
     </div>
     <div class="bg-white rounded-xl border border-slate-200 p-5 flex items-center justify-between">
       <div>
-        <div class="text-xs uppercase tracking-wider text-slate-500">Instalados</div>
-        <div class="text-2xl font-bold mt-1">{{ $summary['installed'] }}</div>
-      </div>
-      <div class="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center">
-        <i class="ri-install-line text-blue-600 text-xl"></i>
-      </div>
-    </div>
-    <div class="bg-white rounded-xl border border-slate-200 p-5 flex items-center justify-between">
-      <div>
         <div class="text-xs uppercase tracking-wider text-slate-500">Habilitados</div>
         <div class="text-2xl font-bold mt-1 text-emerald-600">{{ $summary['enabled'] }}</div>
       </div>
       <div class="w-12 h-12 rounded-lg bg-emerald-50 flex items-center justify-center">
         <i class="ri-toggle-line text-emerald-600 text-xl"></i>
+      </div>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 p-5 flex items-center justify-between">
+      <div>
+        <div class="text-xs uppercase tracking-wider text-slate-500">Deshabilitados</div>
+        <div class="text-2xl font-bold mt-1 text-slate-500">{{ $summary['disabled'] }}</div>
+      </div>
+      <div class="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center">
+        <i class="ri-pause-line text-slate-500 text-xl"></i>
       </div>
     </div>
   </div>
@@ -191,13 +191,13 @@
       <i class="ri-information-line text-lg mt-0.5"></i>
       <div>
         <p>
-          Los plugins viven en <code class="bg-sky-100 px-1 rounded">/plugins/&lt;Nombre&gt;/</code>. Se descubren automáticamente
-          en cada request, pero hay que <strong>instalarlos</strong> (añadir al registro <code class="bg-sky-100 px-1 rounded">plugins.json</code>)
-          y <strong>habilitarlos</strong> (marcarlos como activos) para que aporten controladores, vistas y hooks al framework.
+          Los plugins viven en <code class="bg-sky-100 px-1 rounded">/plugins/&lt;Nombre&gt;/</code> y se descubren automáticamente.
+          <strong>Todo plugin nuevo queda habilitado por default</strong> — no necesitas editar <code class="bg-sky-100 px-1 rounded">plugins.json</code>.
+          El archivo solo guarda los plugins que hayas deshabilitado explícitamente.
         </p>
         <p class="mt-1 text-xs">
-          Las migraciones de cada plugin se ejecutan desde
-          <a href="admin/migraciones" class="text-sky-700 font-medium hover:underline">Migraciones</a>.
+          Tras agregar un plugin nuevo, corre <strong>Reconstruir plugins</strong> para limpiar cache y ejecutar sus migraciones.
+          Gestiona migraciones desde <a href="admin/migraciones" class="text-sky-700 font-medium hover:underline">Migraciones</a>.
         </p>
       </div>
     </div>
@@ -244,13 +244,9 @@
                   <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
                     <i class="ri-check-line"></i> activo
                   </span>
-                @elseif($isInstalled)
-                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium">
-                    <i class="ri-pause-line"></i> instalado
-                  </span>
                 @else
                   <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-medium">
-                    <i class="ri-download-line"></i> disponible
+                    <i class="ri-pause-line"></i> deshabilitado
                   </span>
                 @endif
               </div>
@@ -273,11 +269,9 @@
                   <i class="ri-quill-pen-line"></i> Quetzal ≥ {{ $p['min_quetzal_version'] }}
                 </span>
               @endif
-              @if($isInstalled)
-                <span class="inline-flex items-center gap-1" title="Orden de carga">
-                  <i class="ri-sort-asc"></i> orden #{{ $p['order'] ?? 0 }}
-                </span>
-              @endif
+              <span class="inline-flex items-center gap-1" title="Orden de carga">
+                <i class="ri-sort-asc"></i> orden #{{ $p['order'] ?? 0 }}
+              </span>
             </div>
 
             {{-- Dependencies --}}
@@ -297,49 +291,28 @@
             {{-- Actions --}}
             <div class="flex items-center justify-between flex-wrap gap-2">
               <div class="flex items-center gap-2 flex-wrap">
-                @if(!$isInstalled)
-                  <form method="post" action="admin/post_plugin_install" class="inline">
+                @if($isEnabled)
+                  <form method="post" action="admin/post_plugin_disable" class="inline">
                     @csrf
                     <input type="hidden" name="name" value="{{ $p['name'] }}">
-                    <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg btn-primary text-sm font-semibold">
-                      <i class="ri-download-line"></i> Instalar
+                    <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium">
+                      <i class="ri-pause-circle-line"></i> Deshabilitar
                     </button>
                   </form>
                 @else
-                  @if($isEnabled)
-                    <form method="post" action="admin/post_plugin_disable" class="inline">
-                      @csrf
-                      <input type="hidden" name="name" value="{{ $p['name'] }}">
-                      <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium">
-                        <i class="ri-pause-circle-line"></i> Deshabilitar
-                      </button>
-                    </form>
-                  @else
-                    <form method="post" action="admin/post_plugin_enable" class="inline">
-                      @csrf
-                      <input type="hidden" name="name" value="{{ $p['name'] }}">
-                      <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg btn-primary text-sm font-semibold">
-                        <i class="ri-play-circle-line"></i> Habilitar
-                      </button>
-                    </form>
-                  @endif
-
-                  <form method="post" action="admin/post_plugin_uninstall" class="inline"
-                        onsubmit="return confirm('¿Desinstalar {{ $p['name'] }}? Se removerá del registro pero los archivos permanecen en disco.');">
+                  <form method="post" action="admin/post_plugin_enable" class="inline">
                     @csrf
                     <input type="hidden" name="name" value="{{ $p['name'] }}">
-                    <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium">
-                      <i class="ri-delete-bin-line"></i>
+                    <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg btn-primary text-sm font-semibold">
+                      <i class="ri-play-circle-line"></i> Habilitar
                     </button>
                   </form>
                 @endif
               </div>
 
-              @if($isInstalled)
-                <a href="admin/migraciones" class="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-primary">
-                  <i class="ri-database-2-line"></i> Migraciones
-                </a>
-              @endif
+              <a href="admin/migraciones" class="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-primary">
+                <i class="ri-database-2-line"></i> Migraciones
+              </a>
             </div>
           </div>
         </div>

@@ -207,13 +207,14 @@ class adminController extends Controller implements ControllerInterface
     $this->guardAdminAccess();
 
     $mgr      = QuetzalPluginManager::getInstance();
-    $all      = $mgr->listAll(); // todos los descubiertos con estado anotado
+    $all      = $mgr->listAll();
 
-    // Calcular resumen
+    // Desde v1.6: todo plugin descubierto está habilitado por default.
+    // plugins.json solo guarda los deshabilitados explícitamente.
     $summary = [
-      'total'      => count($all),
-      'installed'  => count(array_filter($all, fn($p) => !empty($p['installed']))),
-      'enabled'    => count(array_filter($all, fn($p) => !empty($p['enabled']))),
+      'total'    => count($all),
+      'enabled'  => count(array_filter($all, fn($p) => !empty($p['enabled']))),
+      'disabled' => count(array_filter($all, fn($p) => empty($p['enabled']))),
     ];
 
     $this->setTitle('Plugins');

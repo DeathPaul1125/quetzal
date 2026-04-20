@@ -137,6 +137,10 @@ class QuetzalPluginManager
 
   /**
    * Retorna el registro de un plugin (record del plugins.json) o null.
+   *
+   * Desde v1.6: plugins.json SOLO guarda overrides (típicamente plugins
+   * deshabilitados explícitamente o con orden custom). Si un plugin no
+   * tiene record, se considera habilitado por default.
    */
   public function getRecord(string $name): ?array
   {
@@ -147,7 +151,21 @@ class QuetzalPluginManager
   }
 
   /**
-   * Retorna todos los plugins descubiertos, anotados con su estado (enabled, order, installed).
+   * ¿El plugin está habilitado?
+   *
+   * Regla: enabled por defecto. Solo está deshabilitado si hay un record
+   * explícito en plugins.json con enabled=false.
+   */
+  public function isEnabled(string $name): bool
+  {
+    $record = $this->getRecord($name);
+    if ($record === null) return true;                // no record = enabled
+    return !array_key_exists('enabled', $record) || $record['enabled'] !== false;
+  }
+
+  /**
+   * Retorna todos los plugins descubiertos, anotados con su estado.
+   * Campo 'installed' siempre true (presencia en disco = instalado).
    */
   public function listAll(): array
   {
@@ -157,8 +175,8 @@ class QuetzalPluginManager
     foreach ($discovered as $name => $manifest) {
       $record = $this->getRecord($name);
       $result[] = array_merge($manifest, [
-        'installed' => $record !== null,
-        'enabled'   => $record['enabled'] ?? false,
+        'installed' => true,
+        'enabled'   => $this->isEnabled($name),
         'order'     => $record['order'] ?? 0,
       ]);
     }
@@ -169,6 +187,8 @@ class QuetzalPluginManager
 
   /**
    * Retorna solo los plugins habilitados, ordenados por 'order' ascendente.
+   * Default: TODOS los plugins descubiertos, excepto los marcados como
+   * enabled=false en plugins.json.
    *
    * @return array<array>
    */
@@ -177,11 +197,13 @@ class QuetzalPluginManager
     $discovered = $this->discover();
     $enabled = [];
 
-    foreach ($this->registry['plugins'] as $record) {
-      if (empty($record['enabled'])) continue;
-      if (!isset($discovered[$record['name']])) continue; // Manifiesto faltante
+    foreach ($discovered as $name => $manifest) {
+      if (!$this->isEnabled($name)) continue;
 
-      $enabled[] = array_merge($discovered[$record['name']], $record);
+      $record = $this->getRecord($name) ?? [];
+      $enabled[] = array_merge($manifest, [
+        'order' => $record['order'] ?? 0,
+      ]);
     }
 
     usort($enabled, fn($a, $b) => ($a['order'] ?? 0) <=> ($b['order'] ?? 0));
@@ -189,85 +211,77 @@ class QuetzalPluginManager
   }
 
   /**
-   * Agrega un plugin al registro (sin habilitar). Valida manifiesto y deps.
+   * @deprecated Desde v1.6 los plugins se instalan solos al copiarse a /plugins/.
+   * Se mantiene por compatibilidad pero es un no-op.
    */
   public function install(string $name): bool
   {
     $discovered = $this->discover();
-
     if (!isset($discovered[$name])) {
       throw new Exception(sprintf('No se encontró el plugin "%s" en %s', $name, self::pluginsDir()));
     }
-
-    if ($this->getRecord($name) !== null) {
-      throw new Exception(sprintf('El plugin "%s" ya está instalado.', $name));
-    }
-
-    $manifest = $discovered[$name];
-    $this->validateCompatibility($manifest);
-
-    $this->registry['plugins'][] = [
-      'name'         => $name,
-      'version'      => $manifest['version'] ?? '0.0.0',
-      'enabled'      => false,
-      'order'        => count($this->registry['plugins']) * 10,
-      'installed_at' => date('Y-m-d H:i:s'),
-    ];
-
-    return $this->saveRegistry();
+    // No-op: el plugin ya está "instalado" con su presencia en disco.
+    return true;
   }
 
   /**
-   * Desinstala un plugin (remueve el record, no borra archivos).
+   * Desinstala un plugin. Desde v1.6 solo lo deshabilita y borra su record
+   * del registry para dejar el archivo limpio.
+   *
+   * Si quieres eliminar los archivos, borra manualmente el directorio.
    */
   public function uninstall(string $name): bool
   {
-    $filtered = array_values(array_filter(
-      $this->registry['plugins'],
-      fn($r) => $r['name'] !== $name
-    ));
-
-    if (count($filtered) === count($this->registry['plugins'])) {
-      throw new Exception(sprintf('El plugin "%s" no está instalado.', $name));
-    }
-
-    $this->registry['plugins'] = $filtered;
-    return $this->saveRegistry();
+    return $this->removeRecord($name);
   }
 
   /**
-   * Habilita un plugin (debe estar instalado y sus dependencias habilitadas).
+   * Habilita un plugin. Si no tenía record, ya estaba enabled (no-op).
+   * Si tenía record con enabled=false, lo elimina del registry.
    */
   public function enable(string $name): bool
   {
-    $record = $this->getRecord($name);
-    if ($record === null) {
-      throw new Exception(sprintf('El plugin "%s" no está instalado. Ejecuta install primero.', $name));
-    }
-
     $manifest = $this->discover()[$name] ?? null;
     if ($manifest === null) {
       throw new Exception(sprintf('No se pudo leer el manifiesto del plugin "%s".', $name));
     }
 
+    $this->validateCompatibility($manifest);
     $this->validateDependenciesEnabled($manifest);
 
-    foreach ($this->registry['plugins'] as &$r) {
-      if ($r['name'] === $name) {
-        $r['enabled'] = true;
-        break;
-      }
-    }
-    unset($r);
+    // Habilitar = simplemente quitar el record (o cambiar enabled a true).
+    // Preferimos quitar para mantener plugins.json mínimo.
+    $record = $this->getRecord($name);
+    if ($record === null) return true;  // ya estaba enabled
 
-    return $this->saveRegistry();
+    // Si tenía otro valor útil (ej. order custom), actualizar a enabled=true
+    // en vez de borrar. Si solo tenía enabled=false, borrar el record entero.
+    $hasCustomOrder = isset($record['order']) && $record['order'] !== 0;
+    if ($hasCustomOrder) {
+      foreach ($this->registry['plugins'] as &$r) {
+        if ($r['name'] === $name) {
+          unset($r['enabled']);
+          break;
+        }
+      }
+      unset($r);
+      return $this->saveRegistry();
+    }
+
+    return $this->removeRecord($name);
   }
 
   /**
-   * Deshabilita un plugin. Falla si otros plugins habilitados dependen de él.
+   * Deshabilita un plugin. Agrega un record con enabled=false al registry.
+   * Falla si otros plugins habilitados dependen de él.
    */
   public function disable(string $name): bool
   {
+    $manifest = $this->discover()[$name] ?? null;
+    if ($manifest === null) {
+      throw new Exception(sprintf('Plugin "%s" no encontrado.', $name));
+    }
+
     foreach ($this->getEnabled() as $enabled) {
       if ($enabled['name'] === $name) continue;
       $deps = $enabled['requires'] ?? [];
@@ -276,14 +290,39 @@ class QuetzalPluginManager
       }
     }
 
-    foreach ($this->registry['plugins'] as &$r) {
-      if ($r['name'] === $name) {
-        $r['enabled'] = false;
-        break;
+    // Si ya hay record, actualiza; si no, crea uno
+    $existing = $this->getRecord($name);
+    if ($existing !== null) {
+      foreach ($this->registry['plugins'] as &$r) {
+        if ($r['name'] === $name) {
+          $r['enabled'] = false;
+          break;
+        }
       }
+      unset($r);
+    } else {
+      $this->registry['plugins'][] = [
+        'name'    => $name,
+        'enabled' => false,
+      ];
     }
-    unset($r);
 
+    return $this->saveRegistry();
+  }
+
+  /**
+   * Helper interno: elimina un record del registry.
+   */
+  private function removeRecord(string $name): bool
+  {
+    $before = count($this->registry['plugins']);
+    $this->registry['plugins'] = array_values(array_filter(
+      $this->registry['plugins'],
+      fn($r) => $r['name'] !== $name
+    ));
+    if (count($this->registry['plugins']) === $before) {
+      return true;  // no había nada que quitar
+    }
     return $this->saveRegistry();
   }
 
@@ -311,10 +350,11 @@ class QuetzalPluginManager
         }
       }
 
-      // 2. Views: registrar tanto para Blade como para motor quetzal
-      $viewsDir = $base . 'views';
-      if (is_dir($viewsDir)) {
-        View::addViewPath($viewsDir);
+      // 2. Views: Blade resuelve 'views.ctrl.xView' → '<path>/views/ctrl/xView.blade.php'
+      // Por eso registramos el directorio BASE del plugin (que contiene views/),
+      // no la carpeta views/ misma (eso duplicaría el segmento).
+      if (is_dir($base . 'views')) {
+        View::addViewPath($base);
       }
 
       // 3. Archivos de funciones (auto-include de cualquier .php en /functions)
