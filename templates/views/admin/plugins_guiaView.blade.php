@@ -3,14 +3,6 @@
 @section('title', 'Guía de plugins')
 @section('page_title', 'Guía para desarrolladores de plugins')
 
-@php
-  // Helper de sintaxis — produce un bloque de código con resaltado suave
-  $code = function(string $lang, string $content) {
-    return '<pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code class="language-' . $lang . '">'
-      . htmlspecialchars($content, ENT_QUOTES) . '</code></pre>';
-  };
-@endphp
-
 @section('content')
 <div class="space-y-6 max-w-5xl">
 
@@ -36,32 +28,15 @@
       </div>
     </div>
 
-    {{-- Índice rápido --}}
     <div class="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-      <a href="#estructura" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700">
-        <i class="ri-folder-line"></i> Estructura
-      </a>
-      <a href="#manifest" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700">
-        <i class="ri-file-code-line"></i> Manifest
-      </a>
-      <a href="#extender" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700">
-        <i class="ri-puzzle-line"></i> Extender
-      </a>
-      <a href="#hooks" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700">
-        <i class="ri-hook-line"></i> Hooks
-      </a>
-      <a href="#vistas" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700">
-        <i class="ri-window-line"></i> Vistas Blade
-      </a>
-      <a href="#migraciones" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700">
-        <i class="ri-database-line"></i> Migraciones
-      </a>
-      <a href="#assets" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700">
-        <i class="ri-image-line"></i> Assets
-      </a>
-      <a href="#ejemplos" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700">
-        <i class="ri-magic-line"></i> Ejemplos
-      </a>
+      <a href="#estructura" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700"><i class="ri-folder-line"></i> Estructura</a>
+      <a href="#manifest" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700"><i class="ri-file-code-line"></i> Manifest</a>
+      <a href="#extender" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700"><i class="ri-puzzle-line"></i> Extender</a>
+      <a href="#hooks" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700"><i class="ri-hook-line"></i> Hooks</a>
+      <a href="#vistas" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700"><i class="ri-window-line"></i> Vistas Blade</a>
+      <a href="#migraciones" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700"><i class="ri-database-line"></i> Migraciones</a>
+      <a href="#assets" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700"><i class="ri-image-line"></i> Assets</a>
+      <a href="#ejemplos" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-primary text-slate-700"><i class="ri-magic-line"></i> Ejemplos</a>
     </div>
   </div>
 
@@ -72,8 +47,7 @@
     </h2>
     <p class="text-sm text-slate-600 mb-4">Convención canónica. Todas las carpetas son opcionales excepto <code class="bg-slate-100 px-1 rounded text-xs">plugin.json</code>.</p>
 
-    {!! $code('plain',
-'plugins/
+    <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code>plugins/
 └── MiPlugin/
     ├── plugin.json              ← Manifest (REQUERIDO)
     ├── Init.php                 ← Bootstrap del plugin (opcional)
@@ -81,14 +55,14 @@
     ├── controllers/             ← Controladores (autoload + override de core)
     ├── models/                  ← Modelos (autoload)
     ├── views/
-    │   └── <controller>/
+    │   └── &lt;controller&gt;/
     │       └── indexView.blade.php
     ├── migrations/              ← Migraciones PDO (estilo Laravel)
     ├── functions/               ← .php auto-incluidos (funciones globales)
     └── assets/                  ← Recursos públicos vía HTTP
         ├── css/
         ├── js/
-        └── images/') !!}
+        └── images/</code></pre>
 
     <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 p-3 text-sm">
       <i class="ri-shield-check-line"></i> Solo <code class="bg-amber-100 px-1 rounded">assets/</code> es accesible vía HTTP. El <code class="bg-amber-100 px-1 rounded">.htaccess</code> de <code>/plugins/</code> bloquea todo lo demás.
@@ -101,8 +75,7 @@
       <i class="ri-file-code-line text-primary"></i> Manifest <code class="bg-slate-100 px-2 py-0.5 rounded text-sm ml-1">plugin.json</code>
     </h2>
 
-    {!! $code('json',
-'{
+    <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code>{
   "name": "MiPlugin",
   "version": "1.0.0",
   "description": "Descripción corta del plugin.",
@@ -110,7 +83,7 @@
   "min_quetzal_version": "1.6.0",
   "min_php": "8.3",
   "requires": ["OtroPlugin"]
-}') !!}
+}</code></pre>
 
     <div class="mt-5 overflow-x-auto">
       <table class="w-full text-sm">
@@ -154,13 +127,9 @@
         Ejemplo: reemplazar <code class="bg-slate-100 px-1 rounded text-xs">adminController</code> para agregar una ruta personalizada <code class="bg-slate-100 px-1 rounded text-xs">/admin/reportes</code>.
       </p>
 
-      {!! $code('plain',
-'plugins/MiPlugin/controllers/adminController.php') !!}
+      <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto mb-2"><code>plugins/MiPlugin/controllers/adminController.php</code></pre>
 
-      {!! $code('php',
-'<?php
-// Extiende el controller del core manteniendo sus métodos.
-// Para acceder al core original, usa require_once y class_alias antes de declarar.
+      <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code>&lt;?php
 
 class adminController extends Controller implements ControllerInterface
 {
@@ -175,19 +144,19 @@ class adminController extends Controller implements ControllerInterface
   // Nuevo método: /admin/reportes
   function reportes()
   {
-    $this->setTitle("Reportes");
-    $this->setView("reportes");
-    $this->render();
+    $this-&gt;setTitle("Reportes");
+    $this-&gt;setView("reportes");
+    $this-&gt;render();
   }
 
   // Sobrescribir index para cambiar el dashboard
   function index()
   {
-    $this->setTitle("Mi dashboard personalizado");
-    $this->setView("index");
-    $this->render();
+    $this-&gt;setTitle("Mi dashboard personalizado");
+    $this-&gt;setView("index");
+    $this-&gt;render();
   }
-}') !!}
+}</code></pre>
 
       <div class="mt-3 rounded-lg border border-sky-200 bg-sky-50 text-sky-900 p-3 text-xs">
         <i class="ri-information-line"></i> <strong>Advertencia:</strong> al sobrescribir un controller pierdes los métodos del core que no redefiniste. La alternativa no-invasiva son los hooks (siguiente sección).
@@ -203,16 +172,16 @@ class adminController extends Controller implements ControllerInterface
         Crea la vista con el mismo nombre en tu plugin. Se renderizará esa en lugar de la del core.
       </p>
 
-      {!! $code('plain',
-'plugins/MiPlugin/views/admin/indexView.blade.php') !!}
+      <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto mb-2"><code>plugins/MiPlugin/views/admin/indexView.blade.php</code></pre>
 
-      {!! $code('blade',
-'@extends("includes.admin.layout")
+      @verbatim
+      <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code>@extends("includes.admin.layout")
 
 @section("content")
-  <h1>Dashboard de MiPlugin</h1>
-  <p>Esta vista reemplaza la del core.</p>
-@endsection') !!}
+  &lt;h1&gt;Dashboard de MiPlugin&lt;/h1&gt;
+  &lt;p&gt;Esta vista reemplaza la del core.&lt;/p&gt;
+@endsection</code></pre>
+      @endverbatim
     </div>
 
     {{-- Hooks (preferido) --}}
@@ -224,15 +193,13 @@ class adminController extends Controller implements ControllerInterface
         Los hooks te permiten enganchar lógica sin tocar el código del core. Registra hooks desde <code class="bg-slate-100 px-1 rounded text-xs">Init.php</code>:
       </p>
 
-      {!! $code('plain',
-'plugins/MiPlugin/Init.php') !!}
+      <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto mb-2"><code>plugins/MiPlugin/Init.php</code></pre>
 
-      {!! $code('php',
-'<?php
+      <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code>&lt;?php
 
 // Ejecuta código antes de cada dispatch (middleware global)
 QuetzalHookManager::registerHook("before_init_dispatch", function ($controller, $method, $params) {
-  if ($controller === "admin" && !user_can("admin-access")) {
+  if ($controller === "admin" &amp;&amp; !user_can("admin-access")) {
     Flasher::error("Necesitas permisos de administrador");
     Redirect::to("login");
   }
@@ -240,8 +207,8 @@ QuetzalHookManager::registerHook("before_init_dispatch", function ($controller, 
 
 // Agrega una directiva Blade personalizada disponible en TODAS las vistas
 QuetzalHookManager::registerHook("on_blade_setup", function ($blade, $compiler) {
-  $compiler->directive("money", function ($expression) {
-    return "<?php echo money($expression); ?>";
+  $compiler-&gt;directive("money", function ($expression) {
+    return "&lt;?php echo money($expression); ?&gt;";
   });
 });
 
@@ -250,7 +217,7 @@ QuetzalHookManager::registerHook("plugins_rebuilt", function ($steps, $counters)
   if ($counters["migration_err"] === 0) {
     // copiar tus propios assets, limpiar tu cache, etc.
   }
-});') !!}
+});</code></pre>
     </div>
   </section>
 
@@ -293,11 +260,11 @@ QuetzalHookManager::registerHook("plugins_rebuilt", function ($steps, $counters)
     <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
       <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
         <div class="font-semibold text-slate-800 mb-1">Registrar</div>
-        {!! $code('php', 'QuetzalHookManager::registerHook("nombre", $callable);') !!}
+        <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 text-xs overflow-x-auto"><code>QuetzalHookManager::registerHook("nombre", $callable);</code></pre>
       </div>
       <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
         <div class="font-semibold text-slate-800 mb-1">Recolectar respuestas</div>
-        {!! $code('php', '$results = QuetzalHookManager::getHookData("filtro", $valor);') !!}
+        <pre class="bg-slate-900 text-slate-100 rounded-lg p-3 text-xs overflow-x-auto"><code>$results = QuetzalHookManager::getHookData("filtro", $valor);</code></pre>
       </div>
     </div>
   </section>
@@ -311,8 +278,8 @@ QuetzalHookManager::registerHook("plugins_rebuilt", function ($steps, $counters)
       Blade es obligatorio desde Quetzal 1.6. Los plugins pueden aportar vistas nuevas o sobrescribir las del core.
     </p>
 
-    {!! $code('blade',
-'@extends("includes.admin.layout")
+    @verbatim
+    <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code>@extends("includes.admin.layout")
 
 @section("title", "Mi sección")
 @section("page_title", "Título visible")
@@ -329,7 +296,8 @@ QuetzalHookManager::registerHook("plugins_rebuilt", function ($steps, $counters)
       <button class="btn-primary">Acción solo admin</button>
     @endcan
   </div>
-@endsection') !!}
+@endsection</code></pre>
+    @endverbatim
 
     <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
       <div class="p-3 rounded-lg border border-slate-200">
@@ -361,15 +329,13 @@ QuetzalHookManager::registerHook("plugins_rebuilt", function ($steps, $counters)
       tracking es aislado: tu plugin usa su propia tabla <code class="bg-slate-100 px-1 rounded text-xs">plugin_&lt;nombre&gt;_migrations</code>.
     </p>
 
-    {!! $code('plain',
-'plugins/MiPlugin/migrations/2026_05_01_100000_create_reports_table.php') !!}
+    <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto mb-2"><code>plugins/MiPlugin/migrations/2026_05_01_100000_create_reports_table.php</code></pre>
 
-    {!! $code('php',
-'<?php
+    <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code>&lt;?php
 
 return new class {
     public function up(PDO $pdo): void {
-        $pdo->exec("
+        $pdo-&gt;exec("
             CREATE TABLE IF NOT EXISTS `reports` (
                 `id` int(11) NOT NULL AUTO_INCREMENT,
                 `title` varchar(255) NOT NULL,
@@ -380,9 +346,9 @@ return new class {
     }
 
     public function down(PDO $pdo): void {
-        $pdo->exec("DROP TABLE IF EXISTS `reports`");
+        $pdo-&gt;exec("DROP TABLE IF EXISTS `reports`");
     }
-};') !!}
+};</code></pre>
 
     <div class="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-900 p-3 text-sm">
       <i class="ri-lightbulb-line"></i> El botón <strong>Reconstruir plugins</strong> en la vista de Plugins corre automáticamente las migraciones pendientes de todos los plugins habilitados.
@@ -398,10 +364,11 @@ return new class {
       Archivos en <code class="bg-slate-100 px-1 rounded text-xs">plugins/MiPlugin/assets/</code> son accesibles vía HTTP. Usa el helper <code class="bg-slate-100 px-1 rounded text-xs">plugin_asset()</code>:
     </p>
 
-    {!! $code('blade',
-'<link rel="stylesheet" href="{{ plugin_asset("MiPlugin", "css/style.css") }}">
-<script src="{{ plugin_asset("MiPlugin", "js/app.js") }}"></script>
-<img src="{{ plugin_asset("MiPlugin", "images/logo.png") }}">') !!}
+    @verbatim
+    <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code>&lt;link rel="stylesheet" href="{{ plugin_asset("MiPlugin", "css/style.css") }}"&gt;
+&lt;script src="{{ plugin_asset("MiPlugin", "js/app.js") }}"&gt;&lt;/script&gt;
+&lt;img src="{{ plugin_asset("MiPlugin", "images/logo.png") }}"&gt;</code></pre>
+    @endverbatim
   </section>
 
   {{-- ======= EJEMPLOS ======= --}}
@@ -410,75 +377,55 @@ return new class {
       <i class="ri-magic-line text-primary"></i> Ejemplos prácticos de extensión
     </h2>
 
-    {{-- Ejemplo 1 --}}
-    <div class="mb-6">
-      <h3 class="font-semibold text-slate-800 mb-2">Agregar un item al sidebar admin</h3>
-      <p class="text-sm text-slate-600 mb-2">
-        Desde tu <code class="bg-slate-100 px-1 rounded text-xs">Init.php</code>, hookéate al momento de render del sidebar (próximamente) — o sobrescribe la vista:
-      </p>
-      {!! $code('blade',
-'{{-- plugins/MiPlugin/views/includes/admin/sidebar.blade.php --}}
-{{-- Esta vista sobrescribe la del core --}}
-@include("includes.admin.sidebar")  {{-- puedes seguir usando el base --}}') !!}
-      <p class="text-xs text-slate-500 mt-2">
-        Alternativa preferida: el core puede exponer un hook <code class="bg-slate-100 px-1 rounded text-xs">admin_sidebar_items</code> en el futuro. Hoy, override es la vía.
-      </p>
-    </div>
-
-    {{-- Ejemplo 2 --}}
     <div class="mb-6">
       <h3 class="font-semibold text-slate-800 mb-2">Agregar una nueva ruta pública</h3>
       <p class="text-sm text-slate-600 mb-2">Crea un controller — Quetzal enruta por convención:</p>
-      {!! $code('php',
-'<?php
+      <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code>&lt;?php
 // plugins/MiPlugin/controllers/reportesController.php
-// URL: /reportes       → reportesController::index()
+// URL: /reportes         → reportesController::index()
 // URL: /reportes/mensual → reportesController::mensual()
 
 class reportesController extends Controller implements ControllerInterface
 {
   function index() {
-    $this->setTitle("Reportes");
-    $this->setView("index");
-    $this->render();
+    $this-&gt;setTitle("Reportes");
+    $this-&gt;setView("index");
+    $this-&gt;render();
   }
 
   function mensual() {
-    $this->setTitle("Reporte mensual");
-    $this->setView("mensual");
-    $this->render();
+    $this-&gt;setTitle("Reporte mensual");
+    $this-&gt;setView("mensual");
+    $this-&gt;render();
   }
-}') !!}
+}</code></pre>
     </div>
 
-    {{-- Ejemplo 3 --}}
     <div class="mb-6">
-      <h3 class="font-semibold text-slate-800 mb-2">Registrar un endpoint API</h3>
-      {!! $code('php',
-'<?php
+      <h3 class="font-semibold text-slate-800 mb-2">Registrar un endpoint API / AJAX</h3>
+      <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code>&lt;?php
 // plugins/MiPlugin/Init.php
 QuetzalHookManager::registerHook("init_set_up", function ($quetzal) {
-  $quetzal->addEndpoint("mi_api");  // URL: /mi_api/...
-  $quetzal->addAjax("mi_ajax");     // URL: /mi_ajax/... (solo AJAX)
-});') !!}
+  $quetzal-&gt;addEndpoint("mi_api");  // URL: /mi_api/...
+  $quetzal-&gt;addAjax("mi_ajax");     // URL: /mi_ajax/... (solo AJAX)
+});</code></pre>
     </div>
 
-    {{-- Ejemplo 4 --}}
     <div>
-      <h3 class="font-semibold text-slate-800 mb-2">Directiva Blade para tu plugin</h3>
-      {!! $code('php',
-'<?php
+      <h3 class="font-semibold text-slate-800 mb-2">Directiva Blade personalizada</h3>
+      <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto"><code>&lt;?php
 // plugins/MiPlugin/Init.php
 QuetzalHookManager::registerHook("on_blade_setup", function ($blade, $compiler) {
   // @currency(valor, "USD") → $125.50 USD
-  $compiler->directive("currency", function ($expression) {
-    return "<?php echo format_currency($expression); ?>";
+  $compiler-&gt;directive("currency", function ($expression) {
+    return "&lt;?php echo format_currency($expression); ?&gt;";
   });
-});') !!}
+});</code></pre>
 
-      {!! $code('blade',
-'{{-- Ahora en cualquier vista: --}}
-@currency($producto["precio"], "USD")') !!}
+      @verbatim
+      <pre class="bg-slate-900 text-slate-100 rounded-lg p-4 text-xs leading-relaxed overflow-x-auto mt-2"><code>{{-- Ahora en cualquier vista: --}}
+@currency($producto["precio"], "USD")</code></pre>
+      @endverbatim
     </div>
   </section>
 
@@ -522,7 +469,7 @@ QuetzalHookManager::registerHook("on_blade_setup", function ($blade, $compiler) 
   {{-- Footer CTA --}}
   <div class="bg-white rounded-xl border border-slate-200 p-6 text-center">
     <p class="text-sm text-slate-600 mb-3">
-      ¿Listo para crear tu primer plugin? Mira <a href="plugins/HelloQuetzal" onclick="return false" class="text-primary hover:underline">plugins/HelloQuetzal</a> como ejemplo funcional completo.
+      ¿Listo para crear tu primer plugin? Mira <code class="bg-slate-100 px-1 rounded">plugins/HelloQuetzal</code> como ejemplo funcional completo.
     </p>
     <a href="admin/plugins" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg btn-primary text-sm font-semibold">
       <i class="ri-arrow-left-line"></i> Volver a Plugins
