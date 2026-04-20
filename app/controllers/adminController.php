@@ -294,6 +294,18 @@ class adminController extends Controller implements ControllerInterface
   }
 
   /**
+   * Guía para desarrolladores: cómo crear plugins y extender el sistema.
+   * Lista todos los hooks disponibles y ejemplos prácticos.
+   */
+  function plugins_guia()
+  {
+    $this->guardAdminAccess();
+    $this->setTitle('Guía de plugins');
+    $this->setView('plugins_guia');
+    $this->render();
+  }
+
+  /**
    * Sube y extrae un plugin desde un archivo ZIP.
    * El plugin queda "descubierto" (disponible); el usuario lo instala y
    * habilita desde la UI después.
