@@ -97,6 +97,9 @@
   </div>
 </div>
 
+{{-- Objeto global Quetzal para JS (incluye CSRF token, URLs, etc.) --}}
+{!! function_exists('load_quetzal_obj') ? load_quetzal_obj() : '' !!}
+
 {{-- Preline runtime --}}
 <script src="https://cdn.jsdelivr.net/npm/preline@2.4.1/dist/preline.js"></script>
 <script>

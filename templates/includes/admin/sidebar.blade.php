@@ -22,7 +22,8 @@
     ['group' => 'Sistema', 'items' => [
       ['label' => 'Roles',        'icon' => 'ri-shield-user-line', 'url' => 'admin/roles',        'controller' => 'admin', 'method' => 'roles',       'activeMethods' => ['crear_role','editar_role','ver_role'],         'permission' => 'admin-access'],
       ['label' => 'Permisos',     'icon' => 'ri-key-2-line',       'url' => 'admin/permisos',     'controller' => 'admin', 'method' => 'permisos',    'activeMethods' => ['crear_permiso','editar_permiso','ver_permiso'], 'permission' => 'admin-access'],
-      ['label' => 'Plugins',      'icon' => 'ri-plug-line',        'url' => 'admin/plugins',      'controller' => 'admin', 'method' => 'plugins',     'permission' => 'admin-access'],
+      ['label' => 'Plugins',      'icon' => 'ri-plug-line',        'url' => 'admin/plugins',      'controller' => 'admin', 'method' => 'plugins',     'activeMethods' => ['plugins_guia'], 'permission' => 'admin-access'],
+      ['label' => 'Generador',    'icon' => 'ri-terminal-box-line','url' => 'admin/generador',    'controller' => 'admin', 'method' => 'generador',   'permission' => 'admin-access'],
       ['label' => 'Migraciones',  'icon' => 'ri-database-2-line',  'url' => 'admin/migraciones',  'controller' => 'admin', 'method' => 'migraciones', 'permission' => 'admin-access'],
       ['label' => 'Apariencia',   'icon' => 'ri-palette-line',     'url' => 'admin/apariencia',   'controller' => 'admin', 'method' => 'apariencia',  'permission' => 'admin-access'],
       ['label' => 'Perfil',       'icon' => 'ri-id-card-line',     'url' => 'admin/perfil',       'controller' => 'admin', 'method' => 'perfil',      'permission' => null],

@@ -293,6 +293,127 @@ class adminController extends Controller implements ControllerInterface
     );
   }
 
+  ////////////////////////////////////////////////////
+  //////// GENERADOR DE CRUD (consola tipo terminal)
+  ////////////////////////////////////////////////////
+
+  /**
+   * Renderiza la vista tipo terminal del generador.
+   */
+  function generador()
+  {
+    $this->guardAdminAccess();
+
+    $plugins = array_map(fn($p) => ['name' => $p['name'], 'version' => $p['version'] ?? '?'],
+      QuetzalPluginManager::getInstance()->getEnabled());
+
+    $this->setTitle('Generador de CRUD');
+    $this->addToData('enabledPlugins', $plugins);
+    $this->setView('generador');
+    $this->render();
+  }
+
+  /**
+   * Endpoint AJAX que ejecuta un comando de generación y retorna JSON.
+   * Recibe POST con { command, target, args }. Protegido por CSRF.
+   */
+  function post_generador_run()
+  {
+    header('Content-Type: application/json');
+
+    $response = fn($ok, $output, $extra = []) => json_encode(
+      array_merge(['ok' => $ok, 'output' => $output], $extra)
+    );
+
+    try {
+      if (!user_can('admin-access')) {
+        echo $response(false, [['level' => 'error', 'text' => 'Sin permisos (admin-access).']]);
+        exit;
+      }
+      if (!Csrf::validate($_POST['csrf'] ?? '')) {
+        echo $response(false, [['level' => 'error', 'text' => 'CSRF inválido.']]);
+        exit;
+      }
+
+      $command = sanitize_input($_POST['command'] ?? '');
+      $target  = sanitize_input($_POST['target']  ?? 'core');
+      $name    = sanitize_input($_POST['name']    ?? '');
+      $table   = sanitize_input($_POST['table']   ?? $name);
+
+      $fieldsRaw = $_POST['fields'] ?? [];
+      $fields    = [];
+      if (is_array($fieldsRaw)) {
+        foreach ($fieldsRaw as $f) {
+          if (!is_array($f) || empty($f['name'])) continue;
+          $fields[] = [
+            'name'     => $f['name'],
+            'type'     => $f['type']     ?? 'string',
+            'length'   => (int)($f['length'] ?? 255),
+            'required' => !empty($f['required']),
+            'unique'   => !empty($f['unique']),
+          ];
+        }
+      }
+
+      $gen = new QuetzalCrudGenerator(['target' => $target]);
+      $output = [];
+
+      $pushResult = function($result) use (&$output) {
+        if (is_array($result) && isset($result['ok'])) {
+          $output[] = [
+            'level' => $result['ok'] ? 'ok' : 'error',
+            'text'  => ($result['ok'] ? '[OK] ' : '[FAIL] ') . $result['message'],
+          ];
+        } elseif (is_array($result)) {
+          foreach ($result as $r) {
+            if (isset($r['ok'])) {
+              $output[] = [
+                'level' => $r['ok'] ? 'ok' : 'error',
+                'text'  => ($r['ok'] ? '[OK] ' : '[FAIL] ') . $r['message'],
+              ];
+            }
+          }
+        }
+      };
+
+      $output[] = ['level' => 'cmd', 'text' => sprintf('$ quetzal %s --target=%s --name=%s%s',
+        $command, $target, $name, $table !== $name ? " --table={$table}" : ''
+      )];
+
+      switch ($command) {
+        case 'make:model':
+          $pushResult($gen->generateModel($name, $table));
+          break;
+
+        case 'make:migration':
+          $pushResult($gen->generateMigration($table, $fields));
+          break;
+
+        case 'make:controller':
+          $pushResult($gen->generateController($name, $table));
+          break;
+
+        case 'make:views':
+          $pushResult($gen->generateViews($name, $fields));
+          break;
+
+        case 'make:crud':
+          $pushResult($gen->generateCrud($name, $table, $fields));
+          $output[] = ['level' => 'info', 'text' => sprintf('Visita /%s para probar el CRUD después de correr la migración.', $name)];
+          break;
+
+        default:
+          throw new Exception('Comando desconocido: ' . $command);
+      }
+
+      echo $response(true, $output);
+
+    } catch (Throwable $e) {
+      echo $response(false, [['level' => 'error', 'text' => '[FAIL] ' . $e->getMessage()]]);
+    }
+    exit;
+  }
+
   /**
    * Guía para desarrolladores: cómo crear plugins y extender el sistema.
    * Lista todos los hooks disponibles y ejemplos prácticos.
