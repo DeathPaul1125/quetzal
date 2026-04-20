@@ -41,16 +41,256 @@
 @section('content')
 <div class="space-y-4">
 
-  {{-- Info banner --}}
-  <div class="rounded-xl border border-sky-200 bg-sky-50 text-sky-900 p-4 text-sm">
-    <div class="flex items-start gap-2">
-      <i class="ri-information-line text-lg mt-0.5"></i>
+  {{-- ========== GUÍA DE USO ========== --}}
+  <details class="bg-white rounded-xl border border-slate-200 overflow-hidden group" open>
+    <summary class="cursor-pointer px-5 py-4 flex items-center justify-between hover:bg-slate-50 list-none">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+          <i class="ri-book-open-line text-primary text-xl"></i>
+        </div>
+        <div>
+          <div class="font-semibold text-slate-800">Cómo usar el generador</div>
+          <div class="text-xs text-slate-500">Guía rápida, comandos, tipos de campo y ejemplos</div>
+        </div>
+      </div>
+      <i class="ri-arrow-down-s-line text-slate-400 text-xl group-open:rotate-180 transition"></i>
+    </summary>
+
+    <div class="px-5 pb-5 pt-1 space-y-5 text-sm text-slate-700">
+
+      {{-- Pasos rápidos --}}
       <div>
-        <p><strong>Generador asistido de CRUD.</strong> Define el nombre, los campos y el destino (core o plugin habilitado). Genera modelo + migración + controlador + 4 vistas Blade en un paso.</p>
-        <p class="mt-1 text-xs text-sky-700">Después de generar, ejecuta <a href="admin/migraciones" class="underline">Migraciones</a> para crear la tabla, y visita <code class="bg-sky-100 px-1 rounded">/{nombre}</code> para probar.</p>
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Pasos rápidos</h4>
+        <ol class="space-y-2">
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">1</span>
+            <div><strong>Elige el comando</strong> — normalmente <code class="bg-slate-100 px-1 rounded text-xs">make:crud</code> para crear todo de una.</div>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">2</span>
+            <div><strong>Elige el destino</strong> — <code class="bg-slate-100 px-1 rounded text-xs">core</code> para la app principal, o un plugin habilitado para aislarlo ahí.</div>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">3</span>
+            <div><strong>Define el nombre del recurso</strong> (ej. <code class="bg-slate-100 px-1 rounded text-xs">tareas</code>) — será la URL, nombre del modelo y controlador. La tabla BD usa el mismo nombre salvo que la cambies.</div>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">4</span>
+            <div><strong>Agrega los campos</strong> que NO sean <code>id</code>, <code>created_at</code> ni <code>updated_at</code> (esos se generan automáticos). Marca "Req" para NOT NULL y "Uniq" para UNIQUE KEY.</div>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">5</span>
+            <div><strong>Click "Ejecutar"</strong> — la terminal muestra cada archivo creado. Si hubo error, lo verás en rojo.</div>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold flex items-center justify-center">6</span>
+            <div><strong>Corre la migración</strong>: ve a <a href="admin/migraciones" class="text-primary hover:underline">Migraciones</a> → "Ejecutar pendientes" para crear la tabla físicamente.</div>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold flex items-center justify-center">7</span>
+            <div><strong>Visita <code class="bg-slate-100 px-1 rounded text-xs">/{nombre}</code></strong> — el CRUD ya funciona: listar, crear, ver detalle, editar y borrar.</div>
+          </li>
+        </ol>
+      </div>
+
+      {{-- Comandos --}}
+      <div>
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Comandos disponibles</h4>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
+              <tr>
+                <th class="text-left px-3 py-2 font-semibold">Comando</th>
+                <th class="text-left px-3 py-2 font-semibold">Genera</th>
+                <th class="text-left px-3 py-2 font-semibold">Úsalo cuando</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr class="bg-emerald-50/40">
+                <td class="px-3 py-2 font-mono text-primary">make:crud</td>
+                <td class="px-3 py-2">modelo + migración + controlador + 4 vistas</td>
+                <td class="px-3 py-2 text-slate-600">Quieres un CRUD completo en un solo paso (recomendado)</td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 font-mono text-primary">make:model</td>
+                <td class="px-3 py-2">solo el modelo</td>
+                <td class="px-3 py-2 text-slate-600">Ya tienes la tabla y solo necesitas la clase</td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 font-mono text-primary">make:migration</td>
+                <td class="px-3 py-2">solo el archivo de migración</td>
+                <td class="px-3 py-2 text-slate-600">Solo quieres crear/modificar la tabla</td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 font-mono text-primary">make:controller</td>
+                <td class="px-3 py-2">solo el controlador</td>
+                <td class="px-3 py-2 text-slate-600">Ya tienes modelo y vistas, falta el controller</td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2 font-mono text-primary">make:views</td>
+                <td class="px-3 py-2">las 4 vistas (index, crear, editar, ver)</td>
+                <td class="px-3 py-2 text-slate-600">Quieres regenerar solo las vistas</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {{-- Tipos de campos --}}
+      <div>
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Tipos de campos</h4>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+          <div class="p-2.5 rounded-lg border border-slate-200">
+            <code class="text-primary font-semibold">string</code>
+            <span class="text-slate-500 ml-2">VARCHAR con longitud configurable (default 255)</span>
+          </div>
+          <div class="p-2.5 rounded-lg border border-slate-200">
+            <code class="text-primary font-semibold">text</code>
+            <span class="text-slate-500 ml-2">TEXT (texto largo, descripciones)</span>
+          </div>
+          <div class="p-2.5 rounded-lg border border-slate-200">
+            <code class="text-primary font-semibold">int</code>
+            <span class="text-slate-500 ml-2">INT(11) — enteros regulares</span>
+          </div>
+          <div class="p-2.5 rounded-lg border border-slate-200">
+            <code class="text-primary font-semibold">bigint</code>
+            <span class="text-slate-500 ml-2">BIGINT — enteros grandes</span>
+          </div>
+          <div class="p-2.5 rounded-lg border border-slate-200">
+            <code class="text-primary font-semibold">decimal</code>
+            <span class="text-slate-500 ml-2">DECIMAL(10,2) — precios, montos</span>
+          </div>
+          <div class="p-2.5 rounded-lg border border-slate-200">
+            <code class="text-primary font-semibold">boolean</code>
+            <span class="text-slate-500 ml-2">TINYINT(1) — 0/1, checkbox en vistas</span>
+          </div>
+          <div class="p-2.5 rounded-lg border border-slate-200">
+            <code class="text-primary font-semibold">date</code>
+            <span class="text-slate-500 ml-2">DATE — solo fecha</span>
+          </div>
+          <div class="p-2.5 rounded-lg border border-slate-200">
+            <code class="text-primary font-semibold">datetime</code>
+            <span class="text-slate-500 ml-2">DATETIME — fecha + hora</span>
+          </div>
+        </div>
+      </div>
+
+      {{-- Ejemplos prácticos --}}
+      <div>
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Ejemplos prácticos</h4>
+
+        <div class="space-y-3">
+          <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
+            <div class="text-sm font-semibold text-slate-800 mb-2">📝 CRUD de tareas</div>
+            <div class="text-xs text-slate-600 space-y-1 font-mono">
+              <div><span class="text-slate-400">Comando:</span> <span class="text-primary">make:crud</span></div>
+              <div><span class="text-slate-400">Nombre:</span> tareas</div>
+              <div><span class="text-slate-400">Campos:</span></div>
+              <div class="pl-4">• titulo <span class="text-slate-400">(string, 150, required)</span></div>
+              <div class="pl-4">• descripcion <span class="text-slate-400">(text)</span></div>
+              <div class="pl-4">• completa <span class="text-slate-400">(boolean)</span></div>
+              <div class="pl-4">• vencimiento <span class="text-slate-400">(date)</span></div>
+            </div>
+          </div>
+
+          <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
+            <div class="text-sm font-semibold text-slate-800 mb-2">📦 CRUD de productos dentro de un plugin</div>
+            <div class="text-xs text-slate-600 space-y-1 font-mono">
+              <div><span class="text-slate-400">Comando:</span> <span class="text-primary">make:crud</span></div>
+              <div><span class="text-slate-400">Destino:</span> plugin: <em>MyStorePlugin</em></div>
+              <div><span class="text-slate-400">Nombre:</span> articulos</div>
+              <div><span class="text-slate-400">Tabla:</span> store_articulos</div>
+              <div><span class="text-slate-400">Campos:</span></div>
+              <div class="pl-4">• nombre <span class="text-slate-400">(string, 200, required)</span></div>
+              <div class="pl-4">• sku <span class="text-slate-400">(string, 50, required, unique)</span></div>
+              <div class="pl-4">• precio <span class="text-slate-400">(decimal, required)</span></div>
+              <div class="pl-4">• stock <span class="text-slate-400">(int)</span></div>
+            </div>
+          </div>
+
+          <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
+            <div class="text-sm font-semibold text-slate-800 mb-2">👥 Solo el modelo (tabla ya existe)</div>
+            <div class="text-xs text-slate-600 space-y-1 font-mono">
+              <div><span class="text-slate-400">Comando:</span> <span class="text-primary">make:model</span></div>
+              <div><span class="text-slate-400">Nombre:</span> clientes</div>
+              <div><span class="text-slate-400">Tabla:</span> clientes_mensuales</div>
+              <div class="text-slate-500 mt-2">Sin campos — solo crea la clase Model con métodos all, by_id, insertOne, etc.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {{-- Qué código se genera --}}
+      <div>
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Qué código se genera</h4>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+          <div class="p-3 rounded-lg border border-slate-200">
+            <div class="font-semibold text-slate-800 mb-1 flex items-center gap-2">
+              <i class="ri-database-line text-primary"></i> Modelo
+            </div>
+            <ul class="text-xs text-slate-600 space-y-0.5 pl-4 list-disc">
+              <li><code>all()</code> / <code>all_paginated()</code></li>
+              <li><code>by_id($id)</code></li>
+              <li><code>insertOne($data)</code></li>
+              <li><code>updateById($id, $data)</code></li>
+              <li><code>deleteById($id)</code></li>
+            </ul>
+          </div>
+          <div class="p-3 rounded-lg border border-slate-200">
+            <div class="font-semibold text-slate-800 mb-1 flex items-center gap-2">
+              <i class="ri-code-s-slash-line text-primary"></i> Controlador
+            </div>
+            <ul class="text-xs text-slate-600 space-y-0.5 pl-4 list-disc">
+              <li><code>index()</code> con búsqueda + paginación</li>
+              <li><code>crear()</code> y <code>post_crear()</code></li>
+              <li><code>ver($id)</code></li>
+              <li><code>editar($id)</code> y <code>post_editar()</code></li>
+              <li><code>borrar($id)</code></li>
+              <li>Auth guard + CSRF en todos los POST</li>
+            </ul>
+          </div>
+          <div class="p-3 rounded-lg border border-slate-200">
+            <div class="font-semibold text-slate-800 mb-1 flex items-center gap-2">
+              <i class="ri-window-line text-primary"></i> 4 Vistas Blade
+            </div>
+            <ul class="text-xs text-slate-600 space-y-0.5 pl-4 list-disc">
+              <li><code>indexView</code> — tabla + acciones dropdown</li>
+              <li><code>crearView</code> — formulario</li>
+              <li><code>editarView</code> — formulario + ID</li>
+              <li><code>verView</code> — detalle read-only</li>
+              <li>Usan el layout admin Preline/Tailwind</li>
+            </ul>
+          </div>
+          <div class="p-3 rounded-lg border border-slate-200">
+            <div class="font-semibold text-slate-800 mb-1 flex items-center gap-2">
+              <i class="ri-stack-line text-primary"></i> Migración
+            </div>
+            <ul class="text-xs text-slate-600 space-y-0.5 pl-4 list-disc">
+              <li>Timestamp automático (YYYY_MM_DD_HHMMSS)</li>
+              <li><code>id</code>, <code>created_at</code>, <code>updated_at</code> auto</li>
+              <li>Tipos MySQL correctos por campo</li>
+              <li>UNIQUE KEY si marcaste "Uniq"</li>
+              <li>Método <code>down()</code> con DROP TABLE</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {{-- Gotchas --}}
+      <div class="rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-amber-700 mb-2 flex items-center gap-2">
+          <i class="ri-alert-line"></i> Protecciones y límites
+        </h4>
+        <ul class="text-sm text-amber-900 space-y-1 pl-5 list-disc">
+          <li><strong>Nunca sobrescribe:</strong> si el archivo ya existe, falla y te lo dice en rojo. Borra el archivo antes de regenerar.</li>
+          <li><strong>Nombres reservados:</strong> no puedes usar <code class="bg-amber-100 px-1 rounded text-xs">admin</code>, <code class="bg-amber-100 px-1 rounded text-xs">api</code>, <code class="bg-amber-100 px-1 rounded text-xs">login</code>, <code class="bg-amber-100 px-1 rounded text-xs">logout</code>, <code class="bg-amber-100 px-1 rounded text-xs">quetzal</code>, <code class="bg-amber-100 px-1 rounded text-xs">error</code>, <code class="bg-amber-100 px-1 rounded text-xs">home</code>, <code class="bg-amber-100 px-1 rounded text-xs">tienda</code>, <code class="bg-amber-100 px-1 rounded text-xs">carrito</code>.</li>
+          <li><strong>El generador NO corre migraciones automáticamente.</strong> Después de generar, ve a <a href="admin/migraciones" class="underline font-medium">Migraciones</a> y ejecútalas manualmente.</li>
+          <li><strong>El controller generado es base:</strong> tiene validaciones genéricas (<code>sanitize_input</code>, CSRF). Revisa el código para agregar validaciones específicas de tu negocio.</li>
+          <li><strong>Si generaste en un plugin:</strong> el plugin debe estar <strong>habilitado</strong> para que las rutas funcionen, y corre <a href="admin/plugins" class="underline font-medium">Reconstruir plugins</a> después.</li>
+        </ul>
       </div>
     </div>
-  </div>
+  </details>
 
   <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
 
