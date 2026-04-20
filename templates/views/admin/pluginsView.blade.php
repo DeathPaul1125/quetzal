@@ -18,6 +18,10 @@
       </div>
     </div>
     <div class="flex items-center gap-2 flex-wrap">
+      <a href="admin/plugins_guia"
+         class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-semibold">
+        <i class="ri-book-open-line"></i> Guía
+      </a>
       <button type="button" data-hs-overlay="#q-upload-plugin"
               class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-semibold">
         <i class="ri-upload-2-line"></i> Subir ZIP
