@@ -33,6 +33,16 @@ define('IMAGES_PATH'             , ROOT . 'assets' . DS . 'images' . DS);
 $dotenv = Dotenv::createImmutable(CONFIG);
 $dotenv->safeLoad();
 
+// Configuración de errores según APP_DEBUG.
+// - debug=true  → muestra todo MENOS E_DEPRECATED y E_USER_DEPRECATED
+//   (las deprecaciones de vendor/ son ruido para quien desarrolla la app).
+// - debug=false → modo producción, errores solo al log.
+$appDebug = filter_var($_ENV['APP_DEBUG'] ?? 'false', FILTER_VALIDATE_BOOLEAN);
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+ini_set('display_errors', $appDebug ? '1' : '0');
+ini_set('display_startup_errors', $appDebug ? '1' : '0');
+ini_set('log_errors', '1');
+
 // Guardar todos los valores de configuración en settings
 $this->settings = $_ENV;
 
