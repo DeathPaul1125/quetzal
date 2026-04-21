@@ -403,25 +403,31 @@ class adminController extends Controller implements ControllerInterface
           $pushResult($gen->generateCrud($name, $table, $fields));
           $output[] = ['level' => 'info', 'text' => sprintf('Visita /%s para probar el CRUD después de correr la migración.', $name)];
 
-          // Sidebar: si el usuario dio título + icono, agregar item al sidebar
-          $sbTitle = sanitize_input($_POST['sidebar_title'] ?? '');
-          $sbIcon  = sanitize_input($_POST['sidebar_icon']  ?? '');
-          $sbGroup = sanitize_input($_POST['sidebar_group'] ?? '');
-          if ($sbTitle !== '' && function_exists('save_sidebar_item')) {
+          // Sidebar: habilitado por default, auto-fill del título con el CRUD name si vacío
+          $sbEnabled = !isset($_POST['sidebar_enabled']) || !empty($_POST['sidebar_enabled']);
+          $sbTitle   = sanitize_input($_POST['sidebar_title'] ?? '');
+          $sbIcon    = sanitize_input($_POST['sidebar_icon']  ?? '');
+          $sbGroup   = sanitize_input($_POST['sidebar_group'] ?? '');
+
+          if ($sbTitle === '') $sbTitle = ucfirst($name);
+          if ($sbIcon  === '') $sbIcon  = 'ri-folder-line';
+          if ($sbGroup === '') $sbGroup = 'Gestión';
+
+          if ($sbEnabled && function_exists('save_sidebar_item')) {
             $saved = save_sidebar_item([
-              'group'      => $sbGroup !== '' ? $sbGroup : 'Gestión',
-              'label'      => $sbTitle,
-              'icon'       => $sbIcon !== '' ? $sbIcon : 'ri-folder-line',
-              'url'        => $name,
-              'controller' => $name,
-              'method'     => 'index',
+              'group'         => $sbGroup,
+              'label'         => $sbTitle,
+              'icon'          => $sbIcon,
+              'url'           => $name,
+              'controller'    => $name,
+              'method'        => 'index',
               'activeMethods' => ['crear', 'editar', 'ver'],
-              'permission' => null,
+              'permission'    => null,
             ]);
             $output[] = [
               'level' => $saved ? 'ok' : 'error',
               'text'  => $saved
-                ? sprintf('[OK] Item "%s" agregado al sidebar en grupo "%s".', $sbTitle, $sbGroup ?: 'Gestión')
+                ? sprintf('[OK] Agregado al sidebar: "%s" en grupo "%s" (icono: %s)', $sbTitle, $sbGroup, $sbIcon)
                 : '[FAIL] No se pudo guardar el item del sidebar.',
             ];
           }
