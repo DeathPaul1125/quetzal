@@ -117,7 +117,10 @@ class QuetzalCrudGenerator
   }
 
   /**
-   * Genera una migración que crea la tabla con los campos dados.
+   * Genera una migración para la tabla. Comportamiento:
+   *   - Si ya existe un archivo `create_<table>_table.php` en cualquier migrations folder → error (evita duplicados)
+   *   - Si la tabla YA EXISTE en la BD → genera ALTER TABLE ADD COLUMN solo con los campos nuevos (estilo Laravel)
+   *   - Si no existe ni en filesystem ni en BD → CREATE TABLE normal
    */
   public function generateMigration(string $table, array $fields): array
   {
@@ -126,8 +129,31 @@ class QuetzalCrudGenerator
       return $this->err('Debes definir al menos un campo para la migración.');
     }
 
-    $fieldsSql = $this->buildFieldsSql($fields);
+    // 1. Detectar migraciones existentes (en todos los folders) con el mismo nombre de tabla
+    $existingCreateMigration = $this->findExistingCreateMigration($table);
+    $tableExistsInDb         = $this->tableExistsInDb($table);
+
     $timestamp = date('Y_m_d_His');
+
+    // CASO A: ya hay migración "create_<table>" en disco → no duplicamos
+    if ($existingCreateMigration !== null) {
+      // Si la tabla YA existe en BD y el usuario agrega campos nuevos, generamos ALTER ADD
+      if ($tableExistsInDb) {
+        return $this->generateAlterAddMigration($table, $fields, $timestamp);
+      }
+      return $this->err(sprintf(
+        'Ya existe una migración que crea la tabla "%s" (%s). Si quieres agregar columnas nuevas, corre primero esa migración o crea manualmente una migración ALTER.',
+        $table, basename($existingCreateMigration)
+      ));
+    }
+
+    // CASO B: tabla existe en BD pero no hay create migration en disco → ALTER ADD
+    if ($tableExistsInDb) {
+      return $this->generateAlterAddMigration($table, $fields, $timestamp);
+    }
+
+    // CASO C: normal CREATE TABLE
+    $fieldsSql = $this->buildFieldsSql($fields);
     $fileName  = sprintf('%s_create_%s_table.php', $timestamp, $table);
     $file      = $this->paths['migrations'] . $fileName;
 
@@ -137,6 +163,176 @@ class QuetzalCrudGenerator
 
     $content = $this->migrationTemplate($table, $fieldsSql);
     return $this->write($file, $content, $this->displayPaths['migrations'] . $fileName);
+  }
+
+  /**
+   * Busca en todos los folders de migrations (core + plugins) si ya existe una
+   * migración que cree la tabla dada. Retorna ruta absoluta o null.
+   */
+  private function findExistingCreateMigration(string $table): ?string
+  {
+    $folders = [ROOT . 'app' . DS . 'migrations'];
+    if (class_exists('QuetzalPluginManager')) {
+      foreach (QuetzalPluginManager::getInstance()->listAll() as $plugin) {
+        $dir = ($plugin['path'] ?? '') . 'migrations';
+        if (is_dir($dir)) $folders[] = $dir;
+      }
+    }
+    $pattern = '/_create_' . preg_quote($table, '/') . '_table\.php$/';
+    foreach ($folders as $dir) {
+      foreach (glob($dir . DS . '*.php') ?: [] as $f) {
+        if (preg_match($pattern, $f)) return $f;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Verifica si la tabla existe en la BD actualmente conectada.
+   */
+  private function tableExistsInDb(string $table): bool
+  {
+    try {
+      $r = Model::query(
+        'SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = :db AND TABLE_NAME = :t LIMIT 1',
+        ['db' => DB_NAME, 't' => $table]
+      );
+      return is_array($r) && !empty($r);
+    } catch (Throwable $e) {
+      return false;
+    }
+  }
+
+  /**
+   * Obtiene las columnas actuales de una tabla existente en BD.
+   */
+  private function getCurrentTableColumns(string $table): array
+  {
+    try {
+      $r = Model::query(
+        'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = :db AND TABLE_NAME = :t',
+        ['db' => DB_NAME, 't' => $table]
+      );
+      if (!is_array($r)) return [];
+      return array_map(fn($row) => strtolower($row['COLUMN_NAME']), $r);
+    } catch (Throwable $e) {
+      return [];
+    }
+  }
+
+  /**
+   * Genera una migración tipo ALTER TABLE ADD COLUMN — solo con campos que
+   * NO existen en la tabla actual.
+   */
+  private function generateAlterAddMigration(string $table, array $fields, string $timestamp): array
+  {
+    $existingCols = $this->getCurrentTableColumns($table);
+
+    // Filtrar solo campos nuevos
+    $newFields = [];
+    $skipped   = [];
+    foreach ($fields as $f) {
+      try {
+        $v = $this->validateField($f);
+      } catch (Throwable $e) { continue; }
+      if ($v['type'] === 'button') continue; // buttons no son columnas
+      if (in_array(strtolower($v['name']), $existingCols, true)) {
+        $skipped[] = $v['name'];
+        continue;
+      }
+      $newFields[] = $v;
+    }
+
+    if (empty($newFields)) {
+      return $this->err(sprintf(
+        'La tabla "%s" ya tiene todas las columnas solicitadas (%s). No se genera migración.',
+        $table, implode(', ', $skipped) ?: 'ninguna nueva'
+      ));
+    }
+
+    // Construir ALTER statements por cada columna nueva
+    $alters = [];
+    $fks    = [];
+    foreach ($newFields as $f) {
+      $sqlType = self::FIELD_TYPES[$f['type']] ?? null;
+      if ($sqlType === null) continue;
+      if (strpos($sqlType, '%d') !== false) {
+        $sqlType = sprintf($sqlType, max(1, min(65535, $f['length'])));
+      }
+      if ($f['type'] === 'select' && ($f['select_source'] ?? 'static') === 'table') {
+        $sqlType = 'int(11)';
+        if (!empty($f['select_table']) && !empty($f['select_value_col'])) {
+          $fks[] = [
+            'column'        => $f['name'],
+            'target_table'  => $f['select_table'],
+            'target_column' => $f['select_value_col'],
+          ];
+        }
+      }
+      $null = $f['required'] ? 'NOT NULL' : 'DEFAULT NULL';
+      if (!$f['required'] && $f['type'] === 'boolean') $null = 'DEFAULT 0';
+      $alters[] = sprintf("    `%s` %s %s", $f['name'], $sqlType, $null);
+    }
+
+    // Crear migración con nombre tipo add_<cols>_to_<table>_table
+    $nameParts = array_slice(array_map(fn($f) => $f['name'], $newFields), 0, 3);
+    $suffix    = implode('_', $nameParts);
+    $fileName  = sprintf('%s_add_%s_to_%s_table.php', $timestamp, $suffix, $table);
+    $file      = $this->paths['migrations'] . $fileName;
+
+    $altersList  = implode(",\n", $alters);
+    $dropColumns = implode("\n      ", array_map(
+      fn($f) => sprintf('$pdo->exec("ALTER TABLE `%s` DROP COLUMN IF EXISTS `%s`");', $table, $f['name']),
+      $newFields
+    ));
+
+    // Foreign keys opcionales
+    $fkAdds = '';
+    $fkDrops = '';
+    foreach ($fks as $fk) {
+      $constraintName = substr($fk['column'], 0, 48) . '_fk';
+      $fkAdds .= sprintf("\n      \$pdo->exec(\"ALTER TABLE `%s` ADD CONSTRAINT `%s` FOREIGN KEY (`%s`) REFERENCES `%s`(`%s`) ON DELETE SET NULL ON UPDATE CASCADE\");",
+        $table, $constraintName, $fk['column'], $fk['target_table'], $fk['target_column']);
+      $fkDrops .= sprintf("\n      try { \$pdo->exec(\"ALTER TABLE `%s` DROP FOREIGN KEY `%s`\"); } catch (Throwable \$e) {}",
+        $table, $constraintName);
+    }
+
+    $content = <<<PHP
+<?php
+
+/**
+ * ALTER TABLE `{$table}` — agrega columnas nuevas.
+ * Generado automáticamente por QuetzalCrudGenerator.
+ * Columnas agregadas: implode(', ', array_map(fn(\$f) => \$f['name'], \$newFields))
+ */
+return new class {
+  public function up(PDO \$pdo): void
+  {
+    \$pdo->exec("
+      ALTER TABLE `{$table}`
+{$altersList}
+    ");{$fkAdds}
+  }
+
+  public function down(PDO \$pdo): void
+  {{$fkDrops}
+      {$dropColumns}
+  }
+};
+PHP;
+
+    if (is_file($file)) {
+      return $this->err('La migración ya existe: ' . $fileName);
+    }
+
+    $result = $this->write($file, $content, $this->displayPaths['migrations'] . $fileName);
+    $result['message'] = sprintf(
+      'Migración ALTER creada (%d columnas nuevas, %d saltadas). %s',
+      count($newFields),
+      count($skipped),
+      $skipped ? 'Ya existían: ' . implode(', ', $skipped) . '.' : ''
+    );
+    return $result;
   }
 
   /**
