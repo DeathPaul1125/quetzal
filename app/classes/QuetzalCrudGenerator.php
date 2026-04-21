@@ -311,7 +311,7 @@ class QuetzalCrudGenerator
 @endphp
 
 @section('content')
-<div class="max-w-4xl space-y-4">
+<div class="space-y-4">
 
   <div class="flex items-center justify-between">
     <a href="{$masterName}" class="text-sm text-slate-500 hover:text-slate-800 inline-flex items-center gap-1">
@@ -770,14 +770,64 @@ PHP;
 
   private function viewIndexTemplate(string $name, array $fields): string
   {
-    $headers = '<th class="text-left px-5 py-3 font-semibold">ID</th>';
-    $cells   = '<td class="px-5 py-3 text-slate-400 font-mono text-xs">#{{ $r[\'id\'] }}</td>';
+    $headers      = '<th class="text-left px-5 py-3 font-semibold">ID</th>';
+    $cells        = '<td class="px-5 py-3 text-slate-400 font-mono text-xs">#{{ $r[\'id\'] }}</td>';
+    $lookupBlocks = '';
 
     foreach ($fields as $f) {
-      $fname = $this->validateField($f)['name'];
+      $v     = $this->validateField($f);
+      $fname = $v['name'];
       $label = ucfirst(str_replace('_', ' ', $fname));
       $headers .= "\n              <th class=\"text-left px-5 py-3 font-semibold\">{$label}</th>";
-      $cells   .= "\n                <td class=\"px-5 py-3 text-slate-600\">{{ \$r['{$fname}'] ?? '—' }}</td>";
+
+      // Select con fuente de tabla: resolver label via lookup batched (una query por campo)
+      $isSelectTable = (($v['type'] ?? '') === 'select'
+        && ($v['select_source'] ?? 'static') === 'table'
+        && !empty($v['select_table'])
+        && !empty($v['select_value_col'])
+        && !empty($v['select_label_col']));
+
+      if ($isSelectTable) {
+        $st = $v['select_table'];
+        $vc = $v['select_value_col'];
+        $lc = $v['select_label_col'];
+
+        $lookupBlocks .= <<<PHP
+
+  // Lookup {$fname} → {$st}.{$lc}
+  \$__ids = array_values(array_unique(array_filter(
+    array_column(\$__rows, '{$fname}'),
+    fn(\$x) => \$x !== null && \$x !== ''
+  )));
+  \$lookups['{$fname}'] = [];
+  if (!empty(\$__ids)) {
+    \$__ph = implode(',', array_fill(0, count(\$__ids), '?'));
+    \$__rs = Model::query(
+      'SELECT `{$vc}` AS v, `{$lc}` AS l FROM `{$st}` WHERE `{$vc}` IN (' . \$__ph . ')',
+      array_values(\$__ids)
+    );
+    if (is_array(\$__rs)) {
+      foreach (\$__rs as \$__row) \$lookups['{$fname}'][\$__row['v']] = \$__row['l'];
+    }
+  }
+
+PHP;
+
+        // Celda con fallback: label → valor crudo → guion
+        $cells .= "\n                <td class=\"px-5 py-3 text-slate-600\">{{ \$lookups['{$fname}'][\$r['{$fname}']] ?? (\$r['{$fname}'] ?? '—') }}</td>";
+      } elseif (($v['type'] ?? '') === 'boolean') {
+        $cells .= "\n                <td class=\"px-5 py-3\">@if(!empty(\$r['{$fname}']))<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs\"><i class=\"ri-check-line\"></i> Sí</span>@else<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs\"><i class=\"ri-close-line\"></i> No</span>@endif</td>";
+      } else {
+        $cells .= "\n                <td class=\"px-5 py-3 text-slate-600\">{{ \$r['{$fname}'] ?? '—' }}</td>";
+      }
+    }
+
+    // Wrapper del bloque @php (solo si hay selects con lookup)
+    $lookupSection = '';
+    if ($lookupBlocks !== '') {
+      $lookupSection = "@php\n  \$__rows = \$rows['rows'] ?? [];\n  \$lookups = [];{$lookupBlocks}@endphp\n\n";
+    } else {
+      $lookupSection = "@php \$lookups = []; @endphp\n\n";
     }
 
     return <<<BLADE
@@ -787,7 +837,7 @@ PHP;
 @section('page_title', ucfirst('{$name}'))
 
 @section('content')
-<div class="space-y-4">
+{$lookupSection}<div class="space-y-4">
 
   <div class="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between flex-wrap gap-3">
     <div class="flex items-center gap-2">
@@ -974,7 +1024,7 @@ BLADE;
 @section('page_title', 'Nuevo {$name}')
 
 @section('content')
-<div class="max-w-4xl space-y-4">
+<div class="space-y-4">
   <div>
     <a href="{$name}" class="text-sm text-slate-500 hover:text-slate-800 inline-flex items-center gap-1">
       <i class="ri-arrow-left-line"></i> Volver al listado
@@ -1013,7 +1063,7 @@ BLADE;
 @section('page_title', 'Editar {$name}')
 
 @section('content')
-<div class="max-w-4xl space-y-4">
+<div class="space-y-4">
   <div>
     <a href="{$name}/ver/{{ \$row['id'] }}" class="text-sm text-slate-500 hover:text-slate-800 inline-flex items-center gap-1">
       <i class="ri-arrow-left-line"></i> Volver al detalle
@@ -1040,14 +1090,61 @@ BLADE;
 
   private function viewVerTemplate(string $name, array $fields): string
   {
-    $rows = '';
+    $rows         = '';
+    $lookupBlocks = '';
+
     foreach ($fields as $f) {
       $v     = $this->validateField($f);
-      $label = ucfirst(str_replace('_', ' ', $v['name']));
-      $rows .= "        <div class=\"flex flex-col sm:flex-row sm:items-center px-5 py-3 text-sm gap-1 sm:gap-4 border-b border-slate-100 last:border-0\">\n"
-            . "          <dt class=\"sm:w-1/3 text-slate-500\">{$label}</dt>\n"
-            . "          <dd class=\"font-medium text-slate-800 break-all\">{{ \$row['{$v['name']}'] ?? '—' }}</dd>\n"
-            . "        </div>\n";
+      $fname = $v['name'];
+      $label = ucfirst(str_replace('_', ' ', $fname));
+
+      $isSelectTable = (($v['type'] ?? '') === 'select'
+        && ($v['select_source'] ?? 'static') === 'table'
+        && !empty($v['select_table'])
+        && !empty($v['select_value_col'])
+        && !empty($v['select_label_col']));
+
+      if ($isSelectTable) {
+        $st = $v['select_table'];
+        $vc = $v['select_value_col'];
+        $lc = $v['select_label_col'];
+
+        $lookupBlocks .= <<<PHP
+
+  // Lookup {$fname} → {$st}.{$lc}
+  \$lookups['{$fname}'] = null;
+  if (!empty(\$row['{$fname}'])) {
+    \$__r = Model::query(
+      'SELECT `{$lc}` AS l FROM `{$st}` WHERE `{$vc}` = ? LIMIT 1',
+      [\$row['{$fname}']]
+    );
+    if (is_array(\$__r) && isset(\$__r[0]['l'])) \$lookups['{$fname}'] = \$__r[0]['l'];
+  }
+
+PHP;
+
+        $rows .= "        <div class=\"flex flex-col sm:flex-row sm:items-center px-5 py-3 text-sm gap-1 sm:gap-4 border-b border-slate-100 last:border-0\">\n"
+              . "          <dt class=\"sm:w-1/3 text-slate-500\">{$label}</dt>\n"
+              . "          <dd class=\"font-medium text-slate-800 break-all\">{{ \$lookups['{$fname}'] ?? (\$row['{$fname}'] ?? '—') }}"
+              . "            @if(!empty(\$lookups['{$fname}']) && !empty(\$row['{$fname}']))<span class=\"ml-2 text-xs text-slate-400 font-mono\">#{{ \$row['{$fname}'] }}</span>@endif\n"
+              . "          </dd>\n"
+              . "        </div>\n";
+      } elseif (($v['type'] ?? '') === 'boolean') {
+        $rows .= "        <div class=\"flex flex-col sm:flex-row sm:items-center px-5 py-3 text-sm gap-1 sm:gap-4 border-b border-slate-100 last:border-0\">\n"
+              . "          <dt class=\"sm:w-1/3 text-slate-500\">{$label}</dt>\n"
+              . "          <dd>@if(!empty(\$row['{$fname}']))<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs\"><i class=\"ri-check-line\"></i> Sí</span>@else<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs\"><i class=\"ri-close-line\"></i> No</span>@endif</dd>\n"
+              . "        </div>\n";
+      } else {
+        $rows .= "        <div class=\"flex flex-col sm:flex-row sm:items-center px-5 py-3 text-sm gap-1 sm:gap-4 border-b border-slate-100 last:border-0\">\n"
+              . "          <dt class=\"sm:w-1/3 text-slate-500\">{$label}</dt>\n"
+              . "          <dd class=\"font-medium text-slate-800 break-all\">{{ \$row['{$fname}'] ?? '—' }}</dd>\n"
+              . "        </div>\n";
+      }
+    }
+
+    $lookupSection = '';
+    if ($lookupBlocks !== '') {
+      $lookupSection = "@php\n  \$lookups = [];{$lookupBlocks}@endphp\n\n";
     }
 
     return <<<BLADE
@@ -1057,7 +1154,7 @@ BLADE;
 @section('page_title', 'Detalle')
 
 @section('content')
-<div class="max-w-3xl space-y-4">
+{$lookupSection}<div class="space-y-4">
 
   <div class="flex items-center justify-between">
     <a href="{$name}" class="text-sm text-slate-500 hover:text-slate-800 inline-flex items-center gap-1">
