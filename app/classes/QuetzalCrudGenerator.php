@@ -29,6 +29,7 @@ class QuetzalCrudGenerator
     'boolean'  => 'tinyint(1)',
     'date'     => 'date',
     'datetime' => 'datetime',
+    'select'   => 'varchar(100)',  // default; override a int(11) si source=table
   ];
 
   /**
@@ -442,7 +443,7 @@ BLADE;
     $width = (int) ($field['width'] ?? 2);
     if ($width < 1 || $width > 4) $width = 2;
 
-    return [
+    $out = [
       'name'     => $fname,
       'type'     => $type,
       'length'   => (int) ($field['length']   ?? 255),
@@ -450,6 +451,27 @@ BLADE;
       'required' => !empty($field['required']),
       'unique'   => !empty($field['unique']),
     ];
+
+    // Metadata específica de select
+    if ($type === 'select') {
+      $out['select_source']    = in_array($field['select_source'] ?? 'static', ['static', 'table'], true)
+                                 ? $field['select_source'] : 'static';
+      $out['select_table']     = preg_match('/^[a-zA-Z0-9_]{0,64}$/', $field['select_table'] ?? '')
+                                 ? ($field['select_table'] ?? '') : '';
+      $out['select_value_col'] = preg_match('/^[a-zA-Z0-9_]{0,64}$/', $field['select_value_col'] ?? '')
+                                 ? ($field['select_value_col'] ?? '') : '';
+      $out['select_label_col'] = preg_match('/^[a-zA-Z0-9_]{0,64}$/', $field['select_label_col'] ?? '')
+                                 ? ($field['select_label_col'] ?? '') : '';
+
+      // Opciones estáticas: acepta string (una por línea) o array
+      $rawOpts = $field['static_options'] ?? ($field['select_options'] ?? []);
+      if (is_string($rawOpts)) {
+        $rawOpts = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $rawOpts))));
+      }
+      $out['static_options'] = is_array($rawOpts) ? $rawOpts : [];
+    }
+
+    return $out;
   }
 
   // ============================================================
@@ -467,6 +489,11 @@ BLADE;
       $sqlType = self::FIELD_TYPES[$f['type']];
       if (strpos($sqlType, '%d') !== false) {
         $sqlType = sprintf($sqlType, max(1, min(65535, $f['length'])));
+      }
+
+      // Select con source=table → es una FK, almacenar como int(11)
+      if ($f['type'] === 'select' && ($f['select_source'] ?? 'static') === 'table') {
+        $sqlType = 'int(11)';
       }
 
       $null = $f['required'] ? 'NOT NULL' : 'DEFAULT NULL';
@@ -862,10 +889,73 @@ BLADE;
            . "        <input type=\"{$type}\" name=\"{$v['name']}\"{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
            . "      </div>\n";
     }
+    if ($v['type'] === 'select') {
+      return $this->renderSelectInput($v, $isEdit, $colSpan, $label, $star, $req);
+    }
     // string (default)
     return "      <div class=\"{$colSpan}\">\n"
          . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
          . "        <input type=\"text\" name=\"{$v['name']}\" maxlength=\"{$v['length']}\"{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+         . "      </div>\n";
+  }
+
+  /**
+   * Renderiza un campo <select>. Dos modos:
+   *   - source=static: opciones literales hardcodeadas en el template
+   *   - source=table:  un @php inline que carga las opciones del schema al render
+   */
+  private function renderSelectInput(array $v, bool $isEdit, string $colSpan, string $label, string $star, string $req): string
+  {
+    $name      = $v['name'];
+    $currentPhp= $isEdit ? "\$row['{$name}'] ?? ''" : "''";
+
+    if (($v['select_source'] ?? 'static') === 'table'
+        && !empty($v['select_table'])
+        && !empty($v['select_value_col'])
+        && !empty($v['select_label_col'])
+    ) {
+      $table   = $v['select_table'];
+      $valCol  = $v['select_value_col'];
+      $labelCol= $v['select_label_col'];
+
+      // @php inline que carga las opciones al render. No requiere tocar el controller.
+      $phpBlock = "        @php\n"
+                . "          \$__opts_{$name} = class_exists('Model')\n"
+                . "            ? Model::query('SELECT `{$valCol}`, `{$labelCol}` FROM `{$table}` ORDER BY `{$labelCol}` ASC') ?: []\n"
+                . "            : [];\n"
+                . "          \$__cur_{$name} = {$currentPhp};\n"
+                . "        @endphp\n";
+
+      $optionsBlock = "          <option value=\"\">— elige —</option>\n"
+                    . "          @foreach(\$__opts_{$name} as \$__opt)\n"
+                    . "            <option value=\"{{ \$__opt['{$valCol}'] }}\" @if((string) \$__opt['{$valCol}'] === (string) \$__cur_{$name}) selected @endif>{{ \$__opt['{$labelCol}'] }}</option>\n"
+                    . "          @endforeach\n";
+
+      return "      <div class=\"{$colSpan}\">\n"
+           . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
+           . $phpBlock
+           . "        <select name=\"{$name}\" {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+           . $optionsBlock
+           . "        </select>\n"
+           . "        <p class=\"text-xs text-slate-400 mt-1\">Opciones desde <code>{$table}</code>.</p>\n"
+           . "      </div>\n";
+    }
+
+    // Modo static — opciones hardcodeadas
+    $options = $v['static_options'] ?? [];
+    if (empty($options)) $options = ['opcion 1', 'opcion 2'];
+
+    $optionsHtml = "          <option value=\"\">— elige —</option>\n";
+    foreach ($options as $opt) {
+      $optEsc = htmlspecialchars($opt, ENT_QUOTES);
+      $optionsHtml .= "          <option value=\"{$optEsc}\" @if((string)({$currentPhp}) === '{$optEsc}') selected @endif>{$optEsc}</option>\n";
+    }
+
+    return "      <div class=\"{$colSpan}\">\n"
+         . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
+         . "        <select name=\"{$name}\" {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+         . $optionsHtml
+         . "        </select>\n"
          . "      </div>\n";
   }
 
