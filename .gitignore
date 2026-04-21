@@ -16,3 +16,4 @@ templates/views/pruebas/
 # Plugin de desarrollo (no se versiona con el framework)
 /plugins/VisualCrudBuilder/
 /plugins/DashboardPlus/
+/plugins/DbManager/
