@@ -63,12 +63,12 @@
 
         <div>
           <label class="block text-sm font-medium text-slate-700 mb-2">Archivo ZIP del plugin</label>
-          <label for="q-plugin-zip"
+          <label for="q-plugin-zip" id="q-dropzone"
                  class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 rounded-xl p-6 cursor-pointer hover:border-primary hover:bg-slate-50 transition">
-            <i class="ri-file-zip-line text-3xl text-slate-400"></i>
+            <i class="ri-file-zip-line text-3xl text-slate-400" id="q-dropzone-icon"></i>
             <div class="text-center">
-              <div class="text-sm font-medium text-slate-700">Haz click o arrastra aquí</div>
-              <div class="text-xs text-slate-500 mt-0.5" id="q-zip-name">ZIP máximo 20 MB</div>
+              <div class="text-sm font-medium text-slate-700" id="q-dropzone-title">Haz click o arrastra un ZIP aquí</div>
+              <div class="text-xs text-slate-500 mt-0.5" id="q-zip-name">Máximo 20 MB</div>
             </div>
             <input id="q-plugin-zip" type="file" name="plugin_zip" accept=".zip,application/zip,application/x-zip-compressed" required class="hidden">
           </label>
@@ -118,16 +118,77 @@
         if (e.key === 'Escape' && !modal.classList.contains('hidden')) close();
       });
 
-      // Mostrar nombre de archivo al seleccionar
-      const input = document.getElementById('q-plugin-zip');
-      const label = document.getElementById('q-zip-name');
-      if (input && label) {
+      // Mostrar nombre de archivo al seleccionar + drag-and-drop
+      const input    = document.getElementById('q-plugin-zip');
+      const dropzone = document.getElementById('q-dropzone');
+      const label    = document.getElementById('q-zip-name');
+      const title    = document.getElementById('q-dropzone-title');
+      const icon     = document.getElementById('q-dropzone-icon');
+
+      function showFile(file) {
+        if (!file) return;
+        // Asignar al input para que forme parte del submit
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+
+        label.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+        label.classList.remove('text-slate-500');
+        label.classList.add('text-primary', 'font-mono');
+        if (title) title.textContent = 'Archivo listo';
+        if (icon) {
+          icon.classList.remove('text-slate-400');
+          icon.classList.add('text-primary');
+        }
+      }
+
+      function isZip(file) {
+        return file && (
+          file.type === 'application/zip' ||
+          file.type === 'application/x-zip-compressed' ||
+          file.name.toLowerCase().endsWith('.zip')
+        );
+      }
+
+      if (input) {
         input.addEventListener('change', function() {
-          if (!this.files[0]) return;
-          const f = this.files[0];
-          label.textContent = f.name + ' (' + (f.size / 1024).toFixed(1) + ' KB)';
-          label.classList.remove('text-slate-500');
-          label.classList.add('text-primary');
+          if (this.files[0]) showFile(this.files[0]);
+        });
+      }
+
+      if (dropzone) {
+        // Prevenir que el navegador abra el archivo si sueltan fuera del dropzone
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+          dropzone.addEventListener(evt, (e) => { e.preventDefault(); e.stopPropagation(); });
+        });
+
+        dropzone.addEventListener('dragenter', () => {
+          dropzone.classList.add('border-primary', 'bg-primary/5');
+        });
+        dropzone.addEventListener('dragover', () => {
+          dropzone.classList.add('border-primary', 'bg-primary/5');
+        });
+        dropzone.addEventListener('dragleave', (e) => {
+          // Solo quitar highlight si salimos del dropzone (no al entrar a un child)
+          if (e.target === dropzone) {
+            dropzone.classList.remove('border-primary', 'bg-primary/5');
+          }
+        });
+        dropzone.addEventListener('drop', (e) => {
+          dropzone.classList.remove('border-primary', 'bg-primary/5');
+          const file = e.dataTransfer?.files?.[0];
+          if (!file) return;
+          if (!isZip(file)) {
+            alert('Solo se aceptan archivos .zip');
+            return;
+          }
+          showFile(file);
+        });
+
+        // Prevenir que el navegador abra el archivo si se suelta FUERA del dropzone
+        window.addEventListener('dragover', (e) => e.preventDefault());
+        window.addEventListener('drop', (e) => {
+          if (!dropzone.contains(e.target)) e.preventDefault();
         });
       }
     })();
