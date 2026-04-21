@@ -331,6 +331,91 @@ function theme_colors(): array
 }
 
 /**
+ * Retorna el path absoluto del archivo sidebar.json.
+ */
+function sidebar_config_file(): string
+{
+	return CONFIG . 'sidebar.json';
+}
+
+/**
+ * Carga los items custom del sidebar (guardados por el CRUD generator,
+ * plugins o agregados manualmente).
+ *
+ * @return array Lista de items con shape:
+ *   [{group, label, icon, url, permission, controller, method, activeMethods}]
+ */
+function load_sidebar_items(): array
+{
+	$file = sidebar_config_file();
+	if (!is_file($file)) return [];
+
+	$data = json_decode(@file_get_contents($file), true);
+	return $data['items'] ?? [];
+}
+
+/**
+ * Guarda un item nuevo al sidebar. Si ya existe uno con la misma url,
+ * lo actualiza (no duplica).
+ *
+ * @param array $item Estructura: {group, label, icon, url, permission, controller, method}
+ * @return bool true si se guardó con éxito
+ */
+function save_sidebar_item(array $item): bool
+{
+	$file  = sidebar_config_file();
+	$items = load_sidebar_items();
+
+	// Normalizar item con defaults
+	$item = array_merge([
+		'group'      => 'Gestión',
+		'label'      => '',
+		'icon'       => 'ri-folder-line',
+		'url'        => '',
+		'controller' => '',
+		'method'     => 'index',
+		'permission' => null,
+	], $item);
+
+	if ($item['label'] === '' || $item['url'] === '') return false;
+
+	// Reemplazar si existe (por url), si no agregar
+	$updated = false;
+	foreach ($items as &$existing) {
+		if (($existing['url'] ?? '') === $item['url']) {
+			$existing = $item;
+			$updated  = true;
+			break;
+		}
+	}
+	unset($existing);
+
+	if (!$updated) $items[] = $item;
+
+	return @file_put_contents($file, json_encode(
+		['items' => $items],
+		JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+	)) !== false;
+}
+
+/**
+ * Remueve un item del sidebar por url.
+ */
+function remove_sidebar_item(string $url): bool
+{
+	$file  = sidebar_config_file();
+	$items = array_values(array_filter(
+		load_sidebar_items(),
+		fn($i) => ($i['url'] ?? '') !== $url
+	));
+
+	return @file_put_contents($file, json_encode(
+		['items' => $items],
+		JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+	)) !== false;
+}
+
+/**
  * Generar un link dinámico con parámetros get y token
  * @param string $url
  * @param array $params
@@ -338,7 +423,7 @@ function theme_colors(): array
  * @param bool $csrf
  * Actualizada por build_url
  * @since 1.1.4
- * 
+ *
  * @return string
  */
 function buildURL($url, $params = [], $redirection = true, $csrf = true)

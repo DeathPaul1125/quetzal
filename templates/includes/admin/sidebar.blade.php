@@ -9,9 +9,7 @@
     return in_array($method, (array) $extra, true);
   };
 
-  // Hook para que los plugins registren items nuevos en el sidebar.
-  // Los plugins registran callbacks en 'admin_sidebar_items' que retornan
-  // arrays de grupos con el mismo shape que $nav abajo.
+  // ====== ITEMS APORTADOS POR PLUGINS (vía hook) ======
   $pluginGroups = [];
   if (class_exists('QuetzalHookManager')) {
     foreach (QuetzalHookManager::getHookData('admin_sidebar_items') as $extra) {
@@ -19,8 +17,19 @@
     }
   }
 
-  // Construye el menú. Los items respetan el permiso declarado; si está null,
-  // se muestra siempre a usuarios autenticados.
+  // ====== ITEMS CUSTOM DEL USUARIO (sidebar.json) ======
+  // Guardados por el CRUD generator, el Visual Builder o edición manual.
+  // Cada item trae su 'group' — los agrupamos para merge.
+  $customItems = function_exists('load_sidebar_items') ? load_sidebar_items() : [];
+  $customGroups = [];
+  foreach ($customItems as $item) {
+    if (empty($item['label']) || empty($item['url'])) continue;
+    $g = $item['group'] ?? 'Gestión';
+    if (!isset($customGroups[$g])) $customGroups[$g] = ['group' => $g, 'items' => []];
+    $customGroups[$g]['items'][] = $item;
+  }
+
+  // Menú base del core
   $nav = [
     ['group' => 'Panel', 'items' => [
       ['label' => 'Dashboard', 'icon' => 'ri-dashboard-line', 'url' => 'admin', 'controller' => 'admin', 'method' => 'index', 'permission' => null],
@@ -40,33 +49,36 @@
     ]],
   ];
 
-  // Merge inteligente con items aportados por plugins:
-  //   - Si un grupo aportado matchea uno existente por nombre, sus items se
-  //     añaden al grupo existente (sin duplicar el encabezado).
-  //   - Si es un grupo nuevo, se añade al final.
-  if (!empty($pluginGroups)) {
-    foreach ($pluginGroups as $pluginGroup) {
-      if (empty($pluginGroup['group']) || empty($pluginGroup['items'])) continue;
-
+  // Merge helper: añade items a un grupo existente o crea uno nuevo al final
+  $mergeGroups = function(array $extraGroups) use (&$nav) {
+    foreach ($extraGroups as $eg) {
+      if (empty($eg['group']) || empty($eg['items'])) continue;
       $foundIndex = null;
       foreach ($nav as $i => $existing) {
-        if (($existing['group'] ?? null) === $pluginGroup['group']) {
-          $foundIndex = $i;
-          break;
-        }
+        if (($existing['group'] ?? null) === $eg['group']) { $foundIndex = $i; break; }
       }
-
       if ($foundIndex !== null) {
-        // Añadir items al grupo existente
-        $nav[$foundIndex]['items'] = array_merge(
-          $nav[$foundIndex]['items'],
-          $pluginGroup['items']
-        );
+        $nav[$foundIndex]['items'] = array_merge($nav[$foundIndex]['items'], $eg['items']);
       } else {
-        // Grupo nuevo: agrégalo al final
-        $nav[] = $pluginGroup;
+        $nav[] = $eg;
       }
     }
+  };
+
+  $mergeGroups($pluginGroups);
+  $mergeGroups(array_values($customGroups));
+
+  // ¿Hay algún item activo en cada grupo? → lo necesitamos para auto-expandir
+  // el grupo activo por default (aunque el usuario haya colapsado otros).
+  $groupHasActive = [];
+  foreach ($nav as $section) {
+    $hasActive = false;
+    foreach ($section['items'] as $item) {
+      if ($isActive($item['controller'] ?? '', $item['method'] ?? null, $item['activeMethods'] ?? [])) {
+        $hasActive = true; break;
+      }
+    }
+    $groupHasActive[$section['group']] = $hasActive;
   }
 @endphp
 
@@ -79,23 +91,32 @@
     </div>
   </div>
 
-  <nav class="flex-1 overflow-y-auto py-3">
+  <nav class="flex-1 overflow-y-auto py-2" id="q-sidebar-nav">
     @foreach($nav as $section)
-      <div class="px-6 pt-4 pb-1 text-[10px] uppercase tracking-wider opacity-50 font-semibold">
-        {{ $section['group'] }}
+      @php
+        // Filtrar items visibles por permiso — si ninguno es visible, no renderizar el grupo
+        $visibleItems = array_filter($section['items'], fn($i) => ($i['permission'] ?? null) === null || user_can($i['permission']));
+        if (empty($visibleItems)) continue;
+
+        $groupKey  = 'q-group-' . preg_replace('/[^a-z0-9]+/i', '-', strtolower($section['group']));
+        $hasActive = $groupHasActive[$section['group']] ?? false;
+      @endphp
+      <div class="q-group" data-group-key="{{ $groupKey }}" data-has-active="{{ $hasActive ? '1' : '0' }}">
+        <button type="button"
+                class="q-group-toggle w-full flex items-center justify-between px-6 pt-3 pb-1 text-[10px] uppercase tracking-wider opacity-60 hover:opacity-90 font-semibold transition">
+          <span>{{ $section['group'] }}</span>
+          <i class="ri-arrow-down-s-line q-group-chevron text-base opacity-70 transition-transform"></i>
+        </button>
+        <div class="q-group-items">
+          @foreach($visibleItems as $item)
+            <a href="{{ $item['url'] }}"
+               class="flex items-center gap-3 px-6 py-2.5 text-sm transition {{ $isActive($item['controller'] ?? '', $item['method'] ?? null, $item['activeMethods'] ?? []) ? 'active' : '' }}">
+              <i class="{{ $item['icon'] ?? 'ri-folder-line' }} text-lg"></i>
+              <span>{{ $item['label'] }}</span>
+            </a>
+          @endforeach
+        </div>
       </div>
-      @foreach($section['items'] as $item)
-        @php
-          $canSee = $item['permission'] === null ? true : user_can($item['permission']);
-        @endphp
-        @if($canSee)
-          <a href="{{ $item['url'] }}"
-             class="flex items-center gap-3 px-6 py-2.5 text-sm transition {{ $isActive($item['controller'], $item['method'], $item['activeMethods'] ?? []) ? 'active' : '' }}">
-            <i class="{{ $item['icon'] }} text-lg"></i>
-            <span>{{ $item['label'] }}</span>
-          </a>
-        @endif
-      @endforeach
     @endforeach
   </nav>
 
@@ -105,3 +126,52 @@
     @endisset
   </div>
 </aside>
+
+@push('scripts')
+<script>
+(function() {
+  'use strict';
+  const STORAGE_KEY = 'q-sidebar-collapsed';
+
+  // Cargar estado previo
+  let collapsed = {};
+  try {
+    collapsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+  } catch (e) { collapsed = {}; }
+
+  // Inicializar cada grupo
+  document.querySelectorAll('#q-sidebar-nav .q-group').forEach(group => {
+    const key       = group.dataset.groupKey;
+    const hasActive = group.dataset.hasActive === '1';
+    const items     = group.querySelector('.q-group-items');
+    const chevron   = group.querySelector('.q-group-chevron');
+
+    // Reglas: si tiene item activo → forzar expandido (independiente del guardado)
+    //         si no, respetar el estado guardado (default expandido)
+    const isCollapsed = hasActive ? false : !!collapsed[key];
+
+    if (isCollapsed) {
+      items.style.display = 'none';
+      if (chevron) chevron.style.transform = 'rotate(-90deg)';
+    }
+  });
+
+  // Toggle
+  document.querySelectorAll('#q-sidebar-nav .q-group-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const group   = btn.closest('.q-group');
+      const key     = group.dataset.groupKey;
+      const items   = group.querySelector('.q-group-items');
+      const chevron = group.querySelector('.q-group-chevron');
+
+      const willCollapse = items.style.display !== 'none';
+      items.style.display = willCollapse ? 'none' : '';
+      if (chevron) chevron.style.transform = willCollapse ? 'rotate(-90deg)' : '';
+
+      collapsed[key] = willCollapse;
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(collapsed)); } catch (e) {}
+    });
+  });
+})();
+</script>
+@endpush

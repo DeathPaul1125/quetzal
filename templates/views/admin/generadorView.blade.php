@@ -340,6 +340,43 @@
             </div>
           </div>
 
+          {{-- Sidebar (solo para make:crud) --}}
+          <div id="q-sidebar-section" class="pt-3 border-t border-slate-100">
+            <div class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-1">
+              <i class="ri-sidebar-fold-line"></i> Sidebar
+              <span class="text-slate-400 font-normal normal-case">(opcional)</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs text-slate-600 mb-1">Título visible</label>
+                <input type="text" name="sidebar_title" maxlength="50"
+                       placeholder="(no aparece en sidebar si vacío)"
+                       class="w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-600 mb-1">Icono Remix</label>
+                <input type="text" name="sidebar_icon" placeholder="ri-folder-line"
+                       class="w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm font-mono">
+                <p class="text-xs text-slate-400 mt-0.5">
+                  <a href="https://remixicon.com/" target="_blank" class="hover:underline">buscar iconos →</a>
+                </p>
+              </div>
+              <div class="sm:col-span-2">
+                <label class="block text-xs text-slate-600 mb-1">Grupo del sidebar</label>
+                <input type="text" name="sidebar_group" list="q-groups" placeholder="Gestión" value="Gestión"
+                       class="w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm">
+                <datalist id="q-groups">
+                  <option value="Panel">
+                  <option value="Gestión">
+                  <option value="Sistema">
+                  <option value="Desarrollo">
+                  <option value="Reportes">
+                </datalist>
+                <p class="text-xs text-slate-400 mt-0.5">Si el grupo existe se agrega ahí; si no, se crea uno nuevo.</p>
+              </div>
+            </div>
+          </div>
+
           {{-- Campos dinámicos --}}
           <div id="q-fields-section">
             <div class="flex items-center justify-between mb-2">

@@ -401,6 +401,29 @@ class adminController extends Controller implements ControllerInterface
         case 'make:crud':
           $pushResult($gen->generateCrud($name, $table, $fields));
           $output[] = ['level' => 'info', 'text' => sprintf('Visita /%s para probar el CRUD después de correr la migración.', $name)];
+
+          // Sidebar: si el usuario dio título + icono, agregar item al sidebar
+          $sbTitle = sanitize_input($_POST['sidebar_title'] ?? '');
+          $sbIcon  = sanitize_input($_POST['sidebar_icon']  ?? '');
+          $sbGroup = sanitize_input($_POST['sidebar_group'] ?? '');
+          if ($sbTitle !== '' && function_exists('save_sidebar_item')) {
+            $saved = save_sidebar_item([
+              'group'      => $sbGroup !== '' ? $sbGroup : 'Gestión',
+              'label'      => $sbTitle,
+              'icon'       => $sbIcon !== '' ? $sbIcon : 'ri-folder-line',
+              'url'        => $name,
+              'controller' => $name,
+              'method'     => 'index',
+              'activeMethods' => ['crear', 'editar', 'ver'],
+              'permission' => null,
+            ]);
+            $output[] = [
+              'level' => $saved ? 'ok' : 'error',
+              'text'  => $saved
+                ? sprintf('[OK] Item "%s" agregado al sidebar en grupo "%s".', $sbTitle, $sbGroup ?: 'Gestión')
+                : '[FAIL] No se pudo guardar el item del sidebar.',
+            ];
+          }
           break;
 
         default:
