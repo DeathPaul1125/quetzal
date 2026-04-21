@@ -100,15 +100,69 @@
 {{-- Objeto global Quetzal para JS (incluye CSRF token, URLs, etc.) --}}
 {!! function_exists('load_quetzal_obj') ? load_quetzal_obj() : '' !!}
 
-{{-- Preline runtime --}}
+{{-- Preline runtime (cargado pero no confiamos 100%, hacemos fallbacks propios) --}}
 <script src="https://cdn.jsdelivr.net/npm/preline@2.4.1/dist/preline.js"></script>
 <script>
+(function() {
+  'use strict';
+
   // Toggle del sidebar en mobile
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-q-sidebar-toggle]');
     if (!btn) return;
     document.getElementById('q-sidebar').classList.toggle('hidden');
   });
+
+  // ============================================================
+  //  Dropdowns (.hs-dropdown) — handler vanilla independiente de Preline
+  //  Funciona con la misma estructura HTML que Preline usa:
+  //    <div class="hs-dropdown">
+  //      <button class="hs-dropdown-toggle">...</button>
+  //      <div class="hs-dropdown-menu hidden">...</div>
+  //    </div>
+  // ============================================================
+  document.addEventListener('click', (e) => {
+    const toggle = e.target.closest('.hs-dropdown-toggle');
+
+    // Cerrar todos los dropdowns abiertos menos el del click
+    document.querySelectorAll('.hs-dropdown.q-open').forEach(dd => {
+      if (toggle && dd.contains(toggle)) return;
+      closeDropdown(dd);
+    });
+
+    if (!toggle) return;
+    e.preventDefault();
+    const dropdown = toggle.closest('.hs-dropdown');
+    if (!dropdown) return;
+    dropdown.classList.contains('q-open') ? closeDropdown(dropdown) : openDropdown(dropdown);
+  });
+
+  function openDropdown(dd) {
+    dd.classList.add('q-open');
+    const menu = dd.querySelector('.hs-dropdown-menu');
+    if (menu) {
+      menu.classList.remove('hidden');
+      menu.classList.add('opacity-100');
+      menu.classList.remove('opacity-0');
+    }
+  }
+  function closeDropdown(dd) {
+    dd.classList.remove('q-open');
+    const menu = dd.querySelector('.hs-dropdown-menu');
+    if (menu) {
+      menu.classList.add('hidden');
+      menu.classList.remove('opacity-100');
+      menu.classList.add('opacity-0');
+    }
+  }
+
+  // Esc cierra dropdowns
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.hs-dropdown.q-open').forEach(closeDropdown);
+    }
+  });
+})();
 </script>
 @stack('scripts')
 </body>
