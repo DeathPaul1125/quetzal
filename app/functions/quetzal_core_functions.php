@@ -2236,44 +2236,75 @@ function get_new_password($password = null)
  * @param array $headers
  * @return mixed
  */
-function quetzal_die(string $error, $headers = [])
+function quetzal_die($error, $headers = [])
 {
-	if (empty($headers)) {
+	if (empty($headers) && !headers_sent()) {
 		header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
-		header("Cache-Control: post-check=0, pre-check=0", false);
 		header("Pragma: no-cache");
+		http_response_code(500);
 	}
 
-	$data =
-	[
-		'title' => 'Hubo un error',
-		'error' => $error
-	];
-
+	// Acepta tanto string como Throwable. Con Throwable extraemos toda la
+	// metadata (file, line, trace) para mostrar en el error page.
+	$data = quetzal_build_error_data($error, 'Hubo un error');
 	$html = get_module('quetzal/generalError', $data);
 	die($html);
 }
 
 /**
- * Nueva función para mostrar una vista especial para errores de conexión a la base de datos
+ * Vista especial para errores de conexión/consulta a la base de datos.
  *
- * @param string $error
+ * @param string|Throwable $error
  * @return void
  */
-function quetzal_db_die(string $error)
+function quetzal_db_die($error)
 {
-	header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
-	header("Cache-Control: post-check=0, pre-check=0", false);
-	header("Pragma: no-cache");
+	if (!headers_sent()) {
+		header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+		header("Pragma: no-cache");
+		http_response_code(500);
+	}
 
-	$data =
-	[
-		'title' => 'Error en la base de datos',
-		'error' => $error
-	];
-
+	$data = quetzal_build_error_data($error, 'Error en la base de datos');
 	echo get_module('quetzal/dbError', $data);
 	die();
+}
+
+/**
+ * Normaliza un error (string o Throwable) a un array con toda la metadata
+ * posible para las vistas de error.
+ */
+function quetzal_build_error_data($error, string $title = 'Error'): array
+{
+	if ($error instanceof Throwable) {
+		return [
+			'title'       => $title,
+			'kind'        => get_class($error),
+			'error'       => $error->getMessage(),
+			'file'        => $error->getFile(),
+			'line'        => $error->getLine(),
+			'code'        => $error->getCode(),
+			'trace'       => $error->getTrace(),
+			'traceAs'     => $error->getTraceAsString(),
+			'previous'    => $error->getPrevious() ? [
+				'kind'    => get_class($error->getPrevious()),
+				'message' => $error->getPrevious()->getMessage(),
+				'file'    => $error->getPrevious()->getFile(),
+				'line'    => $error->getPrevious()->getLine(),
+			] : null,
+		];
+	}
+	return [
+		'title'    => $title,
+		'kind'     => 'Error',
+		'error'    => (string) $error,
+		'file'     => '',
+		'line'     => 0,
+		'code'     => 0,
+		'trace'    => [],
+		'traceAs'  => '',
+		'previous' => null,
+	];
 }
 
 /**

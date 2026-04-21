@@ -110,6 +110,7 @@ class Quetzal
     $this->init_load_config();
     $this->init_autoload(); // Inicializa el cargador de nuestras clases
     $this->init_load_functions();
+    $this->init_error_handlers(); // Instalar handlers globales (usa quetzal_die)
     $this->init_load_plugins(); // Descubre y carga plugins habilitados
 
     try {
@@ -148,8 +149,9 @@ class Quetzal
       QuetzalHookManager::runHook('before_init_dispatch', $this->current_controller, $this->current_method, $this->params);
       $this->init_dispatch();
 
-    } catch (Exception $e) {
-      quetzal_die($e->getMessage());
+    } catch (Throwable $e) {
+      // Pasar el objeto entero para que la vista tenga file/line/trace
+      quetzal_die($e);
     }
   }
 
@@ -236,6 +238,50 @@ class Quetzal
 
     // Cargando el archivo de funciones custom
     require_once FUNCTIONS . $file;
+  }
+
+  /**
+   * Instala handlers globales de excepciones y errores fatales para que
+   * TODO error (incluyendo los que escapan al try/catch del dispatcher)
+   * se muestre con la vista de error bonita en vez del stack trace de PHP.
+   */
+  private function init_error_handlers()
+  {
+    // Excepciones no capturadas → vista de error general
+    set_exception_handler(function (Throwable $e) {
+      if (function_exists('quetzal_die')) {
+        quetzal_die($e);
+      } else {
+        http_response_code(500);
+        echo '<h1>Error</h1><pre>' . htmlspecialchars($e->getMessage()) . '</pre>';
+      }
+    });
+
+    // Errores PHP clásicos → convertirlos a ErrorException (para capturar con try/catch)
+    set_error_handler(function ($severity, $message, $file, $line) {
+      // Respetar @ operator y error_reporting
+      if (!(error_reporting() & $severity)) return false;
+      throw new ErrorException($message, 0, $severity, $file, $line);
+    });
+
+    // Errores fatales (parse, out-of-memory, etc.) → vista de error
+    register_shutdown_function(function () {
+      $err = error_get_last();
+      if ($err === null) return;
+      $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
+      if (!in_array($err['type'], $fatalTypes, true)) return;
+
+      // Simular Throwable con la info disponible
+      $fake = new ErrorException(
+        $err['message'], 0, $err['type'], $err['file'], $err['line']
+      );
+      if (function_exists('quetzal_die')) {
+        quetzal_die($fake);
+      } else {
+        http_response_code(500);
+        echo '<h1>Fatal error</h1><pre>' . htmlspecialchars($err['message']) . '</pre>';
+      }
+    });
   }
 
   /**
@@ -355,8 +401,8 @@ class Quetzal
 
       return true;
 
-    } catch (Exception $e) {
-      quetzal_die($e->getMessage());
+    } catch (Throwable $e) {
+      quetzal_die($e);
     }
   }
 

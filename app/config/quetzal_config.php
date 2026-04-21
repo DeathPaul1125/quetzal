@@ -42,6 +42,10 @@ ini_set('display_errors', $appDebug ? '1' : '0');
 ini_set('display_startup_errors', $appDebug ? '1' : '0');
 ini_set('log_errors', '1');
 
+// Expuesto como constante para que las vistas de error decidan si muestran
+// stack traces y detalles técnicos (dev) o solo un mensaje amigable (prod).
+if (!defined('APP_DEBUG')) define('APP_DEBUG', $appDebug);
+
 // Guardar todos los valores de configuración en settings
 $this->settings = $_ENV;
 
