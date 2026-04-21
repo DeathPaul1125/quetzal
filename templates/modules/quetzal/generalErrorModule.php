@@ -85,7 +85,11 @@ $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'
           <span class="text-xs opacity-80">· <?= $h(date('Y-m-d H:i:s')) ?></span>
         </div>
         <h1 class="text-2xl sm:text-3xl font-bold mt-2 break-words"><?= $h($d->title ?? 'Hubo un error') ?></h1>
-        <p class="mt-2 text-white/90 text-sm sm:text-base break-words"><?= $h($msg) ?></p>
+        <?php if ($debug): ?>
+          <p class="mt-2 text-white/90 text-sm sm:text-base break-words"><?= $h($msg) ?></p>
+        <?php else: ?>
+          <p class="mt-2 text-white/90 text-sm sm:text-base">Ocurrió un problema inesperado. Intenta de nuevo en unos momentos.</p>
+        <?php endif; ?>
       </div>
     </div>
     <div class="mt-5 flex items-center gap-2 flex-wrap">
@@ -98,9 +102,11 @@ $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'
       <button onclick="location.reload()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white/15 hover:bg-white/25 text-sm font-semibold transition">
         <i class="ri-refresh-line"></i> Reintentar
       </button>
-      <button onclick="copyReport()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white/15 hover:bg-white/25 text-sm font-semibold transition ml-auto">
-        <i class="ri-clipboard-line"></i> Copiar reporte
-      </button>
+      <?php if ($debug): ?>
+        <button onclick="copyReport()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white/15 hover:bg-white/25 text-sm font-semibold transition ml-auto">
+          <i class="ri-clipboard-line"></i> Copiar reporte
+        </button>
+      <?php endif; ?>
     </div>
   </div>
 
@@ -259,6 +265,7 @@ $h = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'
   </div>
 </div>
 
+<?php if ($debug): ?>
 <script>
 function copyReport() {
   const report = <?= json_encode([
@@ -271,7 +278,7 @@ function copyReport() {
     'method'  => $method,
     'time'    => date('c'),
     'php'     => PHP_VERSION,
-    'trace'   => $debug ? ($d->traceAs ?? '') : '(hidden — habilita APP_DEBUG)',
+    'trace'   => $d->traceAs ?? '',
   ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
   const text =
     '[' + report.kind + '] ' + report.message + '\n' +
@@ -286,6 +293,7 @@ function copyReport() {
   );
 }
 </script>
+<?php endif; ?>
 
 </body>
 </html>
