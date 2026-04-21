@@ -37,76 +37,99 @@
     </div>
   </div>
 
-  {{-- Modal de upload (Preline) --}}
-  <div id="q-upload-plugin" class="hs-overlay hidden size-full fixed top-0 start-0 z-50 overflow-x-hidden overflow-y-auto bg-slate-900/60 pointer-events-none">
-    <div class="hs-overlay-open:mt-7 hs-overlay-open:opacity-100 hs-overlay-open:duration-500 mt-0 opacity-0 ease-out transition-all max-w-lg w-full m-3 mx-auto">
-      <div class="bg-white rounded-xl shadow-xl pointer-events-auto">
-        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <i class="ri-upload-2-line text-primary"></i>
-            </div>
-            <div>
-              <h3 class="font-semibold text-slate-800">Subir plugin (ZIP)</h3>
-              <p class="text-xs text-slate-500">Se extrae a <code class="bg-slate-100 px-1 rounded">/plugins/</code></p>
-            </div>
+  {{-- Modal de upload (vanilla — no depende de Preline) --}}
+  <div id="q-upload-plugin"
+       class="fixed inset-0 z-[100] hidden items-center justify-center bg-slate-900/60 p-4"
+       role="dialog" aria-modal="true">
+    <div class="bg-white rounded-xl shadow-xl max-w-lg w-full" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+            <i class="ri-upload-2-line text-primary"></i>
           </div>
-          <button type="button" class="text-slate-400 hover:text-slate-600 p-1" data-hs-overlay="#q-upload-plugin">
-            <i class="ri-close-line text-xl"></i>
-          </button>
+          <div>
+            <h3 class="font-semibold text-slate-800">Subir plugin (ZIP)</h3>
+            <p class="text-xs text-slate-500">Se extrae a <code class="bg-slate-100 px-1 rounded">/plugins/</code></p>
+          </div>
+        </div>
+        <button type="button" data-q-modal-close class="text-slate-400 hover:text-slate-600 p-1">
+          <i class="ri-close-line text-xl"></i>
+        </button>
+      </div>
+
+      <form method="post" action="admin/post_plugin_upload" enctype="multipart/form-data" class="p-5 space-y-4"
+            onsubmit="this.querySelector('button[type=submit]').disabled=true; this.querySelector('button[type=submit]').innerHTML='<i class=\'ri-loader-4-line animate-spin\'></i> Subiendo...';">
+        @csrf
+
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-2">Archivo ZIP del plugin</label>
+          <label for="q-plugin-zip"
+                 class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 rounded-xl p-6 cursor-pointer hover:border-primary hover:bg-slate-50 transition">
+            <i class="ri-file-zip-line text-3xl text-slate-400"></i>
+            <div class="text-center">
+              <div class="text-sm font-medium text-slate-700">Haz click o arrastra aquí</div>
+              <div class="text-xs text-slate-500 mt-0.5" id="q-zip-name">ZIP máximo 20 MB</div>
+            </div>
+            <input id="q-plugin-zip" type="file" name="plugin_zip" accept=".zip,application/zip,application/x-zip-compressed" required class="hidden">
+          </label>
         </div>
 
-        <form method="post" action="admin/post_plugin_upload" enctype="multipart/form-data" class="p-5 space-y-4"
-              onsubmit="this.querySelector('button[type=submit]').disabled=true; this.querySelector('button[type=submit]').innerHTML='<i class=\'ri-loader-4-line animate-spin\'></i> Subiendo...';">
-          @csrf
-
-          <div>
-            <label class="block text-sm font-medium text-slate-700 mb-2">Archivo ZIP del plugin</label>
-            <label for="q-plugin-zip"
-                   class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-300 rounded-xl p-6 cursor-pointer hover:border-primary hover:bg-slate-50 transition">
-              <i class="ri-file-zip-line text-3xl text-slate-400"></i>
-              <div class="text-center">
-                <div class="text-sm font-medium text-slate-700">Haz click o arrastra aquí</div>
-                <div class="text-xs text-slate-500 mt-0.5" id="q-zip-name">ZIP máximo 20 MB</div>
-              </div>
-              <input id="q-plugin-zip" type="file" name="plugin_zip" accept=".zip,application/zip,application/x-zip-compressed" required class="hidden">
-            </label>
-          </div>
-
-          <div class="rounded-lg border border-sky-200 bg-sky-50 text-sky-900 p-3 text-xs space-y-1">
-            <div class="flex items-start gap-2">
-              <i class="ri-information-line mt-0.5"></i>
-              <div>
-                <p>El ZIP debe contener un <code class="bg-sky-100 px-1 rounded">plugin.json</code> en la raíz o dentro de una sola carpeta.</p>
-                <p class="mt-1">Tras subirlo aparecerá como <strong>Disponible</strong>. Deberás instalarlo y habilitarlo después.</p>
-              </div>
+        <div class="rounded-lg border border-sky-200 bg-sky-50 text-sky-900 p-3 text-xs space-y-1">
+          <div class="flex items-start gap-2">
+            <i class="ri-information-line mt-0.5"></i>
+            <div>
+              <p>El ZIP debe contener un <code class="bg-sky-100 px-1 rounded">plugin.json</code> en la raíz o dentro de una sola carpeta.</p>
+              <p class="mt-1">Tras subirlo aparecerá como <strong>activo</strong> automáticamente (plugins zero-config).</p>
             </div>
           </div>
+        </div>
 
-          <div class="flex items-center justify-end gap-2 pt-2">
-            <button type="button" data-hs-overlay="#q-upload-plugin"
-                    class="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100">Cancelar</button>
-            <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg btn-primary text-sm font-semibold">
-              <i class="ri-upload-2-line"></i> Subir
-            </button>
-          </div>
-        </form>
-      </div>
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" data-q-modal-close class="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100">Cancelar</button>
+          <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg btn-primary text-sm font-semibold">
+            <i class="ri-upload-2-line"></i> Subir
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
   <script>
     (function() {
-      var input = document.getElementById('q-plugin-zip');
-      var label = document.getElementById('q-zip-name');
-      if (!input || !label) return;
-      input.addEventListener('change', function() {
-        if (!this.files[0]) return;
-        var f = this.files[0];
-        label.textContent = f.name + ' (' + (f.size / 1024).toFixed(1) + ' KB)';
-        label.classList.remove('text-slate-500');
-        label.classList.add('text-primary');
+      // Toggle del modal — independiente de Preline
+      const modal = document.getElementById('q-upload-plugin');
+      if (!modal) return;
+
+      function open()  { modal.classList.remove('hidden'); modal.classList.add('flex'); document.body.style.overflow = 'hidden'; }
+      function close() { modal.classList.add('hidden');    modal.classList.remove('flex'); document.body.style.overflow = ''; }
+
+      // Botones que abren (cualquier [data-hs-overlay="#q-upload-plugin"])
+      document.querySelectorAll('[data-hs-overlay="#q-upload-plugin"]').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.preventDefault(); open(); });
       });
+      // Botones que cierran
+      modal.querySelectorAll('[data-q-modal-close]').forEach(btn => {
+        btn.addEventListener('click', close);
+      });
+      // Click en el backdrop cierra
+      modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+      // ESC cierra
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) close();
+      });
+
+      // Mostrar nombre de archivo al seleccionar
+      const input = document.getElementById('q-plugin-zip');
+      const label = document.getElementById('q-zip-name');
+      if (input && label) {
+        input.addEventListener('change', function() {
+          if (!this.files[0]) return;
+          const f = this.files[0];
+          label.textContent = f.name + ' (' + (f.size / 1024).toFixed(1) + ' KB)';
+          label.classList.remove('text-slate-500');
+          label.classList.add('text-primary');
+        });
+      }
     })();
   </script>
 
