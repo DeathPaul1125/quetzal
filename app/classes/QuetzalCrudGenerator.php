@@ -933,6 +933,14 @@ PHP;
       $v     = $this->validateField($f);
       $fname = $v['name'];
       $label = ucfirst(str_replace('_', ' ', $fname));
+
+      // Saltar campos que no tienen columna en BD o que no queremos listar
+      if (($v['type'] ?? '') === 'button') continue;
+      // Passwords nunca se listan (seguridad)
+      if (($v['type'] ?? '') === 'password') continue;
+      // Hidden no se lista por default (es metadata interna)
+      if (($v['type'] ?? '') === 'hidden')   continue;
+
       $headers .= "\n              <th class=\"text-left px-5 py-3 font-semibold\">{$label}</th>";
 
       // Select con fuente de tabla: resolver label via lookup batched (una query por campo)
@@ -972,6 +980,10 @@ PHP;
         $cells .= "\n                <td class=\"px-5 py-3 text-slate-600\">{{ \$lookups['{$fname}'][\$r['{$fname}']] ?? (\$r['{$fname}'] ?? '—') }}</td>";
       } elseif (($v['type'] ?? '') === 'boolean') {
         $cells .= "\n                <td class=\"px-5 py-3\">@if(!empty(\$r['{$fname}']))<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs\"><i class=\"ri-check-line\"></i> Sí</span>@else<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs\"><i class=\"ri-close-line\"></i> No</span>@endif</td>";
+      } elseif (($v['type'] ?? '') === 'file') {
+        $cells .= "\n                <td class=\"px-5 py-3 text-slate-600\">@if(!empty(\$r['{$fname}']))<a href=\"uploads/{{ \$r['{$fname}'] }}\" target=\"_blank\" class=\"inline-flex items-center gap-1 text-primary hover:underline text-xs\"><i class=\"ri-attachment-line\"></i> {{ \$r['{$fname}'] }}</a>@else<span class=\"text-slate-300\">—</span>@endif</td>";
+      } elseif (($v['type'] ?? '') === 'email') {
+        $cells .= "\n                <td class=\"px-5 py-3 text-slate-600\">@if(!empty(\$r['{$fname}']))<a href=\"mailto:{{ \$r['{$fname}'] }}\" class=\"text-primary hover:underline\">{{ \$r['{$fname}'] }}</a>@else—@endif</td>";
       } else {
         $cells .= "\n                <td class=\"px-5 py-3 text-slate-600\">{{ \$r['{$fname}'] ?? '—' }}</td>";
       }
@@ -1322,6 +1334,10 @@ BLADE;
       $fname = $v['name'];
       $label = ucfirst(str_replace('_', ' ', $fname));
 
+      // Saltar campos sin valor (botones) o sensibles (password)
+      if (($v['type'] ?? '') === 'button')   continue;
+      if (($v['type'] ?? '') === 'password') continue;
+
       $isSelectTable = (($v['type'] ?? '') === 'select'
         && ($v['select_source'] ?? 'static') === 'table'
         && !empty($v['select_table'])
@@ -1357,6 +1373,16 @@ PHP;
         $rows .= "        <div class=\"flex flex-col sm:flex-row sm:items-center px-5 py-3 text-sm gap-1 sm:gap-4 border-b border-slate-100 last:border-0\">\n"
               . "          <dt class=\"sm:w-1/3 text-slate-500\">{$label}</dt>\n"
               . "          <dd>@if(!empty(\$row['{$fname}']))<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs\"><i class=\"ri-check-line\"></i> Sí</span>@else<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs\"><i class=\"ri-close-line\"></i> No</span>@endif</dd>\n"
+              . "        </div>\n";
+      } elseif (($v['type'] ?? '') === 'file') {
+        $rows .= "        <div class=\"flex flex-col sm:flex-row sm:items-center px-5 py-3 text-sm gap-1 sm:gap-4 border-b border-slate-100 last:border-0\">\n"
+              . "          <dt class=\"sm:w-1/3 text-slate-500\">{$label}</dt>\n"
+              . "          <dd>@if(!empty(\$row['{$fname}']))<a href=\"uploads/{{ \$row['{$fname}'] }}\" target=\"_blank\" class=\"inline-flex items-center gap-1 text-primary hover:underline\"><i class=\"ri-attachment-line\"></i> {{ \$row['{$fname}'] }}</a>@else<span class=\"text-slate-300\">—</span>@endif</dd>\n"
+              . "        </div>\n";
+      } elseif (($v['type'] ?? '') === 'email') {
+        $rows .= "        <div class=\"flex flex-col sm:flex-row sm:items-center px-5 py-3 text-sm gap-1 sm:gap-4 border-b border-slate-100 last:border-0\">\n"
+              . "          <dt class=\"sm:w-1/3 text-slate-500\">{$label}</dt>\n"
+              . "          <dd class=\"font-medium text-slate-800\">@if(!empty(\$row['{$fname}']))<a href=\"mailto:{{ \$row['{$fname}'] }}\" class=\"text-primary hover:underline\">{{ \$row['{$fname}'] }}</a>@else—@endif</dd>\n"
               . "        </div>\n";
       } else {
         $rows .= "        <div class=\"flex flex-col sm:flex-row sm:items-center px-5 py-3 text-sm gap-1 sm:gap-4 border-b border-slate-100 last:border-0\">\n"
