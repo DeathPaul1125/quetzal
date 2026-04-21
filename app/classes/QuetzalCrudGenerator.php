@@ -249,10 +249,15 @@ class QuetzalCrudGenerator
       throw new Exception(sprintf('Tipo de campo desconocido: "%s"', $type));
     }
 
+    // width: 1|2|3|4 columnas de 4 (default 2 = half)
+    $width = (int) ($field['width'] ?? 2);
+    if ($width < 1 || $width > 4) $width = 2;
+
     return [
       'name'     => $fname,
       'type'     => $type,
       'length'   => (int) ($field['length']   ?? 255),
+      'width'    => $width,
       'required' => !empty($field['required']),
       'unique'   => !empty($field['unique']),
     ];
