@@ -1,7 +1,5 @@
 <?php
 
-use Jenssegers\Blade\Blade;
-
 /**
  * Motor de vistas de Quetzal.
  *
@@ -42,9 +40,9 @@ class View
   private $DS = null;
 
   /**
-   * Instancia del motor Blade.
+   * Instancia del motor Blade (wrapper propio sobre illuminate/view).
    *
-   * @var Blade
+   * @var QuetzalBladeEngine
    */
   private $bladeInstance = null;
 
@@ -133,14 +131,9 @@ class View
       @mkdir($cachePath, 0775, true);
     }
 
-    $this->bladeInstance = new Blade($viewPaths, $cachePath);
-
-    // jenssegers/blade solo setea el contenedor para facades.
-    // Illuminate\View compila echos que llaman a app('blade.compiler'),
-    // por lo que necesitamos el contenedor también como instancia global.
-    $container = (new \ReflectionClass($this->bladeInstance))->getProperty('container');
-    $container->setAccessible(true);
-    \Illuminate\Container\Container::setInstance($container->getValue($this->bladeInstance));
+    // Wrapper propio sobre illuminate/view. Ya hace Container::setInstance()
+    // internamente, así que no necesitamos reflection aquí.
+    $this->bladeInstance = new QuetzalBladeEngine($viewPaths, $cachePath);
 
     $this->registerBladeExtensions();
   }

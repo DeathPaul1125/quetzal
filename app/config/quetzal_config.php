@@ -34,11 +34,10 @@ $dotenv = Dotenv::createImmutable(CONFIG);
 $dotenv->safeLoad();
 
 // Configuración de errores según APP_DEBUG.
-// - debug=true  → muestra todo MENOS E_DEPRECATED y E_USER_DEPRECATED
-//   (las deprecaciones de vendor/ son ruido para quien desarrolla la app).
-// - debug=false → modo producción, errores solo al log.
+// - debug=true  → display_errors activo (dev local)
+// - debug=false → errores solo al log (producción)
 $appDebug = filter_var($_ENV['APP_DEBUG'] ?? 'false', FILTER_VALIDATE_BOOLEAN);
-error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+error_reporting(E_ALL);
 ini_set('display_errors', $appDebug ? '1' : '0');
 ini_set('display_startup_errors', $appDebug ? '1' : '0');
 ini_set('log_errors', '1');
