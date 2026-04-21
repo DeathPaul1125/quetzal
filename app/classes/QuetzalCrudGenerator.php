@@ -206,6 +206,195 @@ class QuetzalCrudGenerator
     return $results;
   }
 
+  /**
+   * Genera un CRUD maestro-detalle (factura + líneas).
+   *
+   * Crea dos CRUDs completos vinculados por una columna FK:
+   *   - Master: nombre/tabla/campos definidos por el usuario
+   *   - Detail: nombre/tabla propia + FK al master (auto-agregada como primer campo)
+   *
+   * El master genera un verView enriquecido que LISTA las líneas
+   * asociadas y ofrece un botón "Agregar línea" → /detail/crear?parent_id=X.
+   * El detail es un CRUD normal que filtra por parent_id en su index
+   * y pre-rellena parent_id al crear si viene en la URL.
+   *
+   * @return array Resultados combinados con tags 'master-*' y 'detail-*'
+   */
+  public function generateMasterDetail(
+    string $masterName, string $masterTable, array $masterFields,
+    string $detailName, string $detailTable, array $detailFields,
+    string $fkColumn = 'parent_id'
+  ): array {
+    $results = [];
+
+    // Validar FK name
+    if (!preg_match('/^[a-z][a-z0-9_]{0,49}$/', $fkColumn)) {
+      throw new Exception('Nombre de columna FK inválido: ' . $fkColumn);
+    }
+
+    // Detail debe tener el FK agregado como PRIMER campo (int, required)
+    $detailFieldsWithFk = [[
+      'name'     => $fkColumn,
+      'type'     => 'int',
+      'length'   => 0,
+      'width'    => 2,
+      'required' => true,
+      'unique'   => false,
+    ]];
+    foreach ($detailFields as $f) {
+      if (($f['name'] ?? '') === $fkColumn) continue; // evitar duplicados
+      $detailFieldsWithFk[] = $f;
+    }
+
+    // === MASTER ===
+    $results[] = ['type' => 'master-model']      + $this->generateModel($masterName, $masterTable);
+    $results[] = ['type' => 'master-migration']  + $this->generateMigration($masterTable, $masterFields);
+    $results[] = ['type' => 'master-controller'] + $this->generateController($masterName, $masterTable);
+
+    // Vistas del master: index/crear/editar normales + verView enriquecido
+    foreach ($this->generateViews($masterName, $masterFields) as $viewResult) {
+      $results[] = ['type' => 'master-view'] + $viewResult;
+    }
+
+    // Reemplazar verView del master con una versión que incluye listado de líneas
+    $masterVerFile = $this->paths['views'] . $masterName . DS . 'verView.blade.php';
+    if (is_file($masterVerFile)) {
+      $enhancedVer = $this->viewVerWithDetailTemplate($masterName, $masterFields, $detailName, $fkColumn);
+      if (@file_put_contents($masterVerFile, $enhancedVer) !== false) {
+        $results[] = ['type' => 'master-view', 'ok' => true,
+          'message' => 'verView mejorado con listado de líneas.',
+          'path' => $this->displayPaths['views'] . $masterName . '/verView.blade.php'];
+      }
+    }
+
+    // === DETAIL ===
+    $results[] = ['type' => 'detail-model']      + $this->generateModel($detailName, $detailTable);
+    $results[] = ['type' => 'detail-migration']  + $this->generateMigration($detailTable, $detailFieldsWithFk);
+    $results[] = ['type' => 'detail-controller'] + $this->generateController($detailName, $detailTable);
+
+    foreach ($this->generateViews($detailName, $detailFieldsWithFk) as $viewResult) {
+      $results[] = ['type' => 'detail-view'] + $viewResult;
+    }
+
+    return $results;
+  }
+
+  /**
+   * Template verView del master que incluye listado de líneas del detail.
+   * Lista las filas del detail donde fk=master.id y ofrece un botón
+   * "Agregar" que pre-rellena el parent_id al crear una línea.
+   */
+  private function viewVerWithDetailTemplate(string $masterName, array $masterFields, string $detailName, string $fkColumn): string
+  {
+    $rows = '';
+    foreach ($masterFields as $f) {
+      $v     = $this->validateField($f);
+      $label = ucfirst(str_replace('_', ' ', $v['name']));
+      $rows .= "        <div class=\"flex flex-col sm:flex-row sm:items-center px-5 py-3 text-sm gap-1 sm:gap-4 border-b border-slate-100 last:border-0\">\n"
+            . "          <dt class=\"sm:w-1/3 text-slate-500\">{$label}</dt>\n"
+            . "          <dd class=\"font-medium text-slate-800 break-all\">{{ \$row['{$v['name']}'] ?? '—' }}</dd>\n"
+            . "        </div>\n";
+    }
+
+    return <<<BLADE
+@extends('includes.admin.layout')
+
+@section('title', '{$masterName} #' . \$row['id'])
+@section('page_title', 'Detalle')
+
+@php
+  // Cargar líneas de detalle vinculadas por FK
+  \$detail_rows = class_exists('{$detailName}Model')
+    ? {$detailName}Model::query('SELECT * FROM ' . {$detailName}Model::\$t1 . ' WHERE {$fkColumn} = :id ORDER BY id ASC', ['id' => \$row['id']]) ?: []
+    : [];
+@endphp
+
+@section('content')
+<div class="max-w-4xl space-y-4">
+
+  <div class="flex items-center justify-between">
+    <a href="{$masterName}" class="text-sm text-slate-500 hover:text-slate-800 inline-flex items-center gap-1">
+      <i class="ri-arrow-left-line"></i> Volver al listado
+    </a>
+    <div class="flex items-center gap-2">
+      <a href="{$masterName}/editar/{{ \$row['id'] }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium">
+        <i class="ri-edit-line"></i> Editar
+      </a>
+      <a href="{{ build_url('{$masterName}/borrar/' . \$row['id']) }}" onclick="return confirm('¿Eliminar este registro?')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium">
+        <i class="ri-delete-bin-line"></i> Eliminar
+      </a>
+    </div>
+  </div>
+
+  {{-- Card del master --}}
+  <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 border-b border-slate-100">
+      <h3 class="font-semibold text-slate-800">Registro #{{ \$row['id'] }}</h3>
+    </div>
+    <dl>
+{$rows}      <div class="flex flex-col sm:flex-row sm:items-center px-5 py-3 text-sm gap-1 sm:gap-4 border-t border-slate-100">
+        <dt class="sm:w-1/3 text-slate-500">Creado</dt>
+        <dd class="font-medium text-slate-800">{{ !empty(\$row['created_at']) ? date('d/m/Y H:i', strtotime(\$row['created_at'])) : '—' }}</dd>
+      </div>
+    </dl>
+  </div>
+
+  {{-- Líneas de detalle --}}
+  <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+      <h3 class="font-semibold text-slate-800 flex items-center gap-2">
+        <i class="ri-list-check-2 text-primary"></i> Líneas de {$detailName}
+        <span class="inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-full bg-slate-100 text-xs font-medium">{{ count(\$detail_rows) }}</span>
+      </h3>
+      <a href="{{ '{$detailName}/crear?{$fkColumn}=' . \$row['id'] }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg btn-primary text-sm font-semibold">
+        <i class="ri-add-line"></i> Agregar línea
+      </a>
+    </div>
+
+    @if(empty(\$detail_rows))
+      <div class="p-8 text-center text-sm text-slate-500">
+        No hay líneas. Agrega la primera con el botón superior.
+      </div>
+    @else
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
+            <tr>
+              <th class="text-left px-5 py-2 font-semibold">ID</th>
+              @foreach(array_keys(\$detail_rows[0] ?? []) as \$col)
+                @if(!in_array(\$col, ['id', '{$fkColumn}', 'created_at', 'updated_at']))
+                  <th class="text-left px-5 py-2 font-semibold">{{ ucfirst(str_replace('_', ' ', \$col)) }}</th>
+                @endif
+              @endforeach
+              <th class="px-5 py-2 w-20"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            @foreach(\$detail_rows as \$line)
+              <tr class="hover:bg-slate-50/60">
+                <td class="px-5 py-2 font-mono text-xs text-slate-400">#{{ \$line['id'] }}</td>
+                @foreach(array_keys(\$line) as \$col)
+                  @if(!in_array(\$col, ['id', '{$fkColumn}', 'created_at', 'updated_at']))
+                    <td class="px-5 py-2 text-slate-700">{{ \$line[\$col] ?? '—' }}</td>
+                  @endif
+                @endforeach
+                <td class="px-5 py-2 text-right whitespace-nowrap">
+                  <a href="{$detailName}/editar/{{ \$line['id'] }}" class="text-slate-500 hover:text-primary text-xs mr-2"><i class="ri-edit-line"></i></a>
+                  <a href="{{ build_url('{$detailName}/borrar/' . \$line['id']) }}" onclick="return confirm('¿Eliminar esta línea?')" class="text-red-500 hover:text-red-700 text-xs"><i class="ri-delete-bin-line"></i></a>
+                </td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+      </div>
+    @endif
+  </div>
+</div>
+@endsection
+
+BLADE;
+  }
+
   // ============================================================
   //  Validaciones
   // ============================================================
@@ -631,45 +820,61 @@ PHP;
 BLADE;
   }
 
+  /**
+   * Genera el HTML del input para un campo dado (crear=true o editar=false).
+   * Envuelto en un div con sm:col-span-N según width.
+   */
+  private function renderFieldInput(array $v, bool $isEdit = false, string $varName = 'row'): string
+  {
+    $label    = ucfirst(str_replace('_', ' ', $v['name']));
+    $req      = $v['required'] ? 'required' : '';
+    $star     = ($v['required'] && !$isEdit) ? ' <span class="text-red-500">*</span>' : '';
+    $colSpan  = 'sm:col-span-' . $v['width'];
+    $valueAttr= $isEdit ? " value=\"{{ \$row['{$v['name']}'] ?? '' }}\"" : '';
+
+    if ($v['type'] === 'text') {
+      $content = $isEdit ? "{{ \$row['{$v['name']}'] ?? '' }}" : '';
+      return "      <div class=\"{$colSpan}\">\n"
+           . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
+           . "        <textarea name=\"{$v['name']}\" rows=\"3\" {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">{$content}</textarea>\n"
+           . "      </div>\n";
+    }
+    if ($v['type'] === 'boolean') {
+      $checked = $isEdit ? " @if(!empty(\$row['{$v['name']}'])) checked @endif" : '';
+      return "      <div class=\"{$colSpan}\">\n"
+           . "        <label class=\"flex items-center gap-2 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer h-full\">\n"
+           . "          <input type=\"checkbox\" name=\"{$v['name']}\" value=\"1\"{$checked} class=\"rounded border-slate-300 text-primary focus:ring-primary\">\n"
+           . "          <span class=\"text-sm font-medium\">{$label}</span>\n"
+           . "        </label>\n"
+           . "      </div>\n";
+    }
+    if (in_array($v['type'], ['int', 'bigint', 'decimal'])) {
+      $step = $v['type'] === 'decimal' ? '0.01' : '1';
+      return "      <div class=\"{$colSpan}\">\n"
+           . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
+           . "        <input type=\"number\" name=\"{$v['name']}\" step=\"{$step}\"{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+           . "      </div>\n";
+    }
+    if ($v['type'] === 'date' || $v['type'] === 'datetime') {
+      $type = $v['type'] === 'date' ? 'date' : 'datetime-local';
+      return "      <div class=\"{$colSpan}\">\n"
+           . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
+           . "        <input type=\"{$type}\" name=\"{$v['name']}\"{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+           . "      </div>\n";
+    }
+    // string (default)
+    return "      <div class=\"{$colSpan}\">\n"
+         . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
+         . "        <input type=\"text\" name=\"{$v['name']}\" maxlength=\"{$v['length']}\"{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+         . "      </div>\n";
+  }
+
   private function viewCrearTemplate(string $name, array $fields): string
   {
     $inputs = '';
     foreach ($fields as $f) {
-      $v     = $this->validateField($f);
-      $label = ucfirst(str_replace('_', ' ', $v['name']));
-      $req   = $v['required'] ? 'required' : '';
-      $star  = $v['required'] ? ' <span class="text-red-500">*</span>' : '';
-
-      if ($v['type'] === 'text') {
-        $inputs .= "      <div>\n"
-                . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
-                . "        <textarea name=\"{$v['name']}\" rows=\"3\" {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\"></textarea>\n"
-                . "      </div>\n";
-      } elseif ($v['type'] === 'boolean') {
-        $inputs .= "      <div>\n"
-                . "        <label class=\"flex items-center gap-2 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer\">\n"
-                . "          <input type=\"checkbox\" name=\"{$v['name']}\" value=\"1\" class=\"rounded border-slate-300 text-primary focus:ring-primary\">\n"
-                . "          <span class=\"text-sm font-medium\">{$label}</span>\n"
-                . "        </label>\n"
-                . "      </div>\n";
-      } elseif (in_array($v['type'], ['int', 'bigint', 'decimal'])) {
-        $step = $v['type'] === 'decimal' ? '0.01' : '1';
-        $inputs .= "      <div>\n"
-                . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
-                . "        <input type=\"number\" name=\"{$v['name']}\" step=\"{$step}\" {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
-                . "      </div>\n";
-      } elseif ($v['type'] === 'date' || $v['type'] === 'datetime') {
-        $type = $v['type'] === 'date' ? 'date' : 'datetime-local';
-        $inputs .= "      <div>\n"
-                . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
-                . "        <input type=\"{$type}\" name=\"{$v['name']}\" {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
-                . "      </div>\n";
-      } else {
-        $inputs .= "      <div>\n"
-                . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
-                . "        <input type=\"text\" name=\"{$v['name']}\" maxlength=\"{$v['length']}\" {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
-                . "      </div>\n";
-      }
+      $v = $this->validateField($f);
+      $inputs .= $this->renderFieldInput($v, false);
     }
 
     return <<<BLADE
@@ -679,7 +884,7 @@ BLADE;
 @section('page_title', 'Nuevo {$name}')
 
 @section('content')
-<div class="max-w-3xl space-y-4">
+<div class="max-w-4xl space-y-4">
   <div>
     <a href="{$name}" class="text-sm text-slate-500 hover:text-slate-800 inline-flex items-center gap-1">
       <i class="ri-arrow-left-line"></i> Volver al listado
@@ -688,7 +893,8 @@ BLADE;
 
   <form method="post" action="{$name}/post_crear" class="bg-white rounded-xl border border-slate-200 p-6 sm:p-8 space-y-5">
     @csrf
-{$inputs}
+    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+{$inputs}    </div>
     <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
       <a href="{$name}" class="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100">Cancelar</a>
       <button type="submit" class="inline-flex items-center gap-2 px-5 py-2 rounded-lg btn-primary font-semibold text-sm">
@@ -706,40 +912,8 @@ BLADE;
   {
     $inputs = '';
     foreach ($fields as $f) {
-      $v     = $this->validateField($f);
-      $label = ucfirst(str_replace('_', ' ', $v['name']));
-      $req   = $v['required'] ? 'required' : '';
-
-      if ($v['type'] === 'text') {
-        $inputs .= "      <div>\n"
-                . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}</label>\n"
-                . "        <textarea name=\"{$v['name']}\" rows=\"3\" {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">{{ \$row['{$v['name']}'] ?? '' }}</textarea>\n"
-                . "      </div>\n";
-      } elseif ($v['type'] === 'boolean') {
-        $inputs .= "      <div>\n"
-                . "        <label class=\"flex items-center gap-2 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer\">\n"
-                . "          <input type=\"checkbox\" name=\"{$v['name']}\" value=\"1\" @if(!empty(\$row['{$v['name']}'])) checked @endif class=\"rounded border-slate-300 text-primary focus:ring-primary\">\n"
-                . "          <span class=\"text-sm font-medium\">{$label}</span>\n"
-                . "        </label>\n"
-                . "      </div>\n";
-      } elseif (in_array($v['type'], ['int', 'bigint', 'decimal'])) {
-        $step = $v['type'] === 'decimal' ? '0.01' : '1';
-        $inputs .= "      <div>\n"
-                . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}</label>\n"
-                . "        <input type=\"number\" name=\"{$v['name']}\" step=\"{$step}\" value=\"{{ \$row['{$v['name']}'] ?? '' }}\" {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
-                . "      </div>\n";
-      } elseif ($v['type'] === 'date' || $v['type'] === 'datetime') {
-        $type = $v['type'] === 'date' ? 'date' : 'datetime-local';
-        $inputs .= "      <div>\n"
-                . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}</label>\n"
-                . "        <input type=\"{$type}\" name=\"{$v['name']}\" value=\"{{ \$row['{$v['name']}'] ?? '' }}\" {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
-                . "      </div>\n";
-      } else {
-        $inputs .= "      <div>\n"
-                . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}</label>\n"
-                . "        <input type=\"text\" name=\"{$v['name']}\" maxlength=\"{$v['length']}\" value=\"{{ \$row['{$v['name']}'] ?? '' }}\" {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
-                . "      </div>\n";
-      }
+      $v = $this->validateField($f);
+      $inputs .= $this->renderFieldInput($v, true);
     }
 
     return <<<BLADE
@@ -749,7 +923,7 @@ BLADE;
 @section('page_title', 'Editar {$name}')
 
 @section('content')
-<div class="max-w-3xl space-y-4">
+<div class="max-w-4xl space-y-4">
   <div>
     <a href="{$name}/ver/{{ \$row['id'] }}" class="text-sm text-slate-500 hover:text-slate-800 inline-flex items-center gap-1">
       <i class="ri-arrow-left-line"></i> Volver al detalle
@@ -759,7 +933,8 @@ BLADE;
   <form method="post" action="{$name}/post_editar" class="bg-white rounded-xl border border-slate-200 p-6 sm:p-8 space-y-5">
     @csrf
     <input type="hidden" name="id" value="{{ \$row['id'] }}">
-{$inputs}
+    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+{$inputs}    </div>
     <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
       <a href="{$name}/ver/{{ \$row['id'] }}" class="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100">Cancelar</a>
       <button type="submit" class="inline-flex items-center gap-2 px-5 py-2 rounded-lg btn-primary font-semibold text-sm">

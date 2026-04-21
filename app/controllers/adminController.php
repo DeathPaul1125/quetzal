@@ -350,6 +350,7 @@ class adminController extends Controller implements ControllerInterface
             'name'     => $f['name'],
             'type'     => $f['type']     ?? 'string',
             'length'   => (int)($f['length'] ?? 255),
+            'width'    => (int)($f['width']  ?? 2),
             'required' => !empty($f['required']),
             'unique'   => !empty($f['unique']),
           ];
