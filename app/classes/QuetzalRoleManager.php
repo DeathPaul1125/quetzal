@@ -355,6 +355,102 @@ class QuetzalRoleManager extends Model
   }
 
   /**
+   * Sincroniza los permisos declarados por plugins.
+   *
+   * Fuentes:
+   *   1. Hook `plugin_permissions` — plugins retornan un array de permisos
+   *   2. Clave `permissions` en plugin.json de cada plugin habilitado
+   *
+   * Shape de cada permiso:
+   *   ['slug' => 'facturador.ventas.crear', 'nombre' => 'Crear ventas', 'descripcion' => '...']
+   *
+   * Comportamiento:
+   *   - Inserta permisos nuevos (NO toca los existentes ni borra)
+   *   - Auto-asigna los nuevos a roles 'admin' y 'developer'
+   *   - Retorna resumen {added, skipped, assigned, errors}
+   */
+  public static function syncPermissions(): array
+  {
+    $summary = ['added' => [], 'skipped' => [], 'assigned' => [], 'errors' => []];
+
+    // 1. Juntar permisos declarados
+    $declared = [];
+
+    if (class_exists('QuetzalHookManager')) {
+      foreach (QuetzalHookManager::getHookData('plugin_permissions') as $list) {
+        if (is_array($list)) foreach ($list as $p) if (is_array($p)) $declared[] = $p;
+      }
+    }
+
+    if (class_exists('QuetzalPluginManager')) {
+      foreach (QuetzalPluginManager::getInstance()->getEnabled() as $plugin) {
+        if (!empty($plugin['permissions']) && is_array($plugin['permissions'])) {
+          foreach ($plugin['permissions'] as $p) {
+            if (is_array($p)) $declared[] = $p;
+          }
+        }
+      }
+    }
+
+    // 2. Deduplicar por slug
+    $bySlug = [];
+    foreach ($declared as $p) {
+      $slug = trim((string)($p['slug'] ?? ''));
+      if ($slug === '') continue;
+      $bySlug[$slug] = $p;
+    }
+
+    // 3. Roles automáticos a los que se asignan los nuevos permisos
+    $autoRoles = [];
+    foreach (['admin', 'developer'] as $roleSlug) {
+      $r = Model::list('quetzal_roles', ['slug' => $roleSlug], 1);
+      if ($r) $autoRoles[$roleSlug] = (int) $r['id'];
+    }
+
+    // 4. Insertar faltantes + asignar
+    foreach ($bySlug as $slug => $p) {
+      if (!preg_match('/^[a-z0-9_\-\.]+$/', $slug)) {
+        $summary['errors'][] = $slug . ' → slug inválido (solo a-z, 0-9, _, -, .)';
+        continue;
+      }
+
+      $exists = Model::list('quetzal_permisos', ['slug' => $slug], 1);
+      if ($exists) {
+        $summary['skipped'][] = $slug;
+        continue;
+      }
+
+      $nombre = trim((string)($p['nombre'] ?? $slug));
+      $desc   = trim((string)($p['descripcion'] ?? ''));
+
+      $permId = Model::add('quetzal_permisos', [
+        'nombre'      => $nombre,
+        'slug'        => $slug,
+        'descripcion' => $desc !== '' ? $desc : null,
+        'creado'      => now(),
+      ]);
+
+      if (!$permId) {
+        $summary['errors'][] = $slug . ' → INSERT falló';
+        continue;
+      }
+
+      $summary['added'][] = $slug;
+
+      // Auto-asignar a admin/developer
+      foreach ($autoRoles as $roleSlug => $roleId) {
+        $dup = Model::list('quetzal_roles_permisos', ['id_role' => $roleId, 'id_permiso' => $permId], 1);
+        if ($dup) continue;
+        if (Model::add('quetzal_roles_permisos', ['id_role' => $roleId, 'id_permiso' => $permId])) {
+          $summary['assigned'][] = $slug . ' → ' . $roleSlug;
+        }
+      }
+    }
+
+    return $summary;
+  }
+
+  /**
    * Agrega un nuevo permiso a la base de datos
    *
    * @param string $name

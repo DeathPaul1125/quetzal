@@ -19,9 +19,20 @@
           {{ count($permissions) }}
         </span>
       </div>
-      <a href="admin/crear_permiso" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg btn-primary text-sm font-semibold">
-        <i class="ri-add-line"></i> Nuevo permiso
-      </a>
+      <div class="flex items-center gap-2">
+        <form method="post" action="admin/post_sync_permisos" class="inline"
+              onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').innerHTML='<i class=\'ri-loader-4-line animate-spin\'></i> Sincronizando...';">
+          @csrf
+          <button type="submit"
+                  class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-semibold"
+                  title="Detecta y registra permisos declarados por plugins habilitados">
+            <i class="ri-refresh-line"></i> Sincronizar desde plugins
+          </button>
+        </form>
+        <a href="admin/crear_permiso" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg btn-primary text-sm font-semibold">
+          <i class="ri-add-line"></i> Nuevo permiso
+        </a>
+      </div>
     </div>
 
     <form method="get" action="admin/permisos" class="mt-4 grid grid-cols-1 sm:grid-cols-12 gap-3">

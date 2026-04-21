@@ -29,30 +29,37 @@
     $customGroups[$g]['items'][] = $item;
   }
 
-  // Menú base del core
+  // Menú base del core — Sistema se agrega al final (después de plugins)
   $nav = [
     ['group' => 'Panel', 'items' => [
-      ['label' => 'Dashboard', 'icon' => 'ri-dashboard-line', 'url' => 'admin', 'controller' => 'admin', 'method' => 'index', 'permission' => null],
-    ]],
-    ['group' => 'Gestión', 'items' => [
-      ['label' => 'Usuarios',   'icon' => 'ri-user-line',      'url' => 'admin/usuarios',   'controller' => 'admin', 'method' => 'usuarios',   'activeMethods' => ['crear_usuario','editar_usuario','ver_usuario'],    'permission' => 'users-read'],
-      ['label' => 'Productos',  'icon' => 'ri-archive-line',   'url' => 'admin/productos',  'controller' => 'admin', 'method' => 'productos',  'activeMethods' => ['crear_producto','editar_producto','ver_producto'], 'permission' => 'products-read'],
-    ]],
-    ['group' => 'Sistema', 'items' => [
-      ['label' => 'Roles',        'icon' => 'ri-shield-user-line', 'url' => 'admin/roles',        'controller' => 'admin', 'method' => 'roles',       'activeMethods' => ['crear_role','editar_role','ver_role'],         'permission' => 'admin-access'],
-      ['label' => 'Permisos',     'icon' => 'ri-key-2-line',       'url' => 'admin/permisos',     'controller' => 'admin', 'method' => 'permisos',    'activeMethods' => ['crear_permiso','editar_permiso','ver_permiso'], 'permission' => 'admin-access'],
-      ['label' => 'Plugins',      'icon' => 'ri-plug-line',        'url' => 'admin/plugins',      'controller' => 'admin', 'method' => 'plugins',     'activeMethods' => ['plugins_guia'], 'permission' => 'admin-access'],
-      ['label' => 'Generador',    'icon' => 'ri-terminal-box-line','url' => 'admin/generador',    'controller' => 'admin', 'method' => 'generador',   'permission' => 'admin-access'],
-      ['label' => 'Migraciones',  'icon' => 'ri-database-2-line',  'url' => 'admin/migraciones',  'controller' => 'admin', 'method' => 'migraciones', 'permission' => 'admin-access'],
-      ['label' => 'Apariencia',   'icon' => 'ri-palette-line',     'url' => 'admin/apariencia',   'controller' => 'admin', 'method' => 'apariencia',  'permission' => 'admin-access'],
-      ['label' => 'Perfil',       'icon' => 'ri-id-card-line',     'url' => 'admin/perfil',       'controller' => 'admin', 'method' => 'perfil',      'permission' => null],
+      ['label' => 'Dashboard', 'icon' => 'ri-dashboard-fill', 'iconColor' => 'text-sky-400',   'url' => 'admin', 'controller' => 'admin', 'method' => 'index', 'permission' => null],
     ]],
   ];
 
-  // Merge helper: añade items a un grupo existente o crea uno nuevo al final
-  $mergeGroups = function(array $extraGroups) use (&$nav) {
+  // Items del grupo Sistema — va al final del sidebar
+  $sistemaItems = [
+    ['label' => 'Usuarios',     'icon' => 'ri-user-3-fill',       'iconColor' => 'text-blue-400',    'url' => 'admin/usuarios',     'controller' => 'admin', 'method' => 'usuarios',    'activeMethods' => ['crear_usuario','editar_usuario','ver_usuario'], 'permission' => 'users-read'],
+    ['label' => 'Roles',        'icon' => 'ri-shield-user-fill',  'iconColor' => 'text-amber-400',   'url' => 'admin/roles',        'controller' => 'admin', 'method' => 'roles',       'activeMethods' => ['crear_role','editar_role','ver_role'],          'permission' => 'admin-access'],
+    ['label' => 'Permisos',     'icon' => 'ri-key-2-fill',        'iconColor' => 'text-yellow-400',  'url' => 'admin/permisos',     'controller' => 'admin', 'method' => 'permisos',    'activeMethods' => ['crear_permiso','editar_permiso','ver_permiso'], 'permission' => 'admin-access'],
+    ['label' => 'Plugins',      'icon' => 'ri-plug-fill',         'iconColor' => 'text-purple-400',  'url' => 'admin/plugins',      'controller' => 'admin', 'method' => 'plugins',     'activeMethods' => ['plugins_guia'],                                 'permission' => 'admin-access'],
+    ['label' => 'Generador',    'icon' => 'ri-terminal-box-fill', 'iconColor' => 'text-slate-300',   'url' => 'admin/generador',    'controller' => 'admin', 'method' => 'generador',                                                                        'permission' => 'admin-access'],
+    ['label' => 'Migraciones',  'icon' => 'ri-database-2-fill',   'iconColor' => 'text-cyan-400',    'url' => 'admin/migraciones',  'controller' => 'admin', 'method' => 'migraciones',                                                                      'permission' => 'admin-access'],
+    ['label' => 'Apariencia',   'icon' => 'ri-palette-fill',      'iconColor' => 'text-pink-400',    'url' => 'admin/apariencia',   'controller' => 'admin', 'method' => 'apariencia',                                                                       'permission' => 'admin-access'],
+    ['label' => 'Perfil',       'icon' => 'ri-id-card-fill',      'iconColor' => 'text-indigo-400',  'url' => 'admin/perfil',       'controller' => 'admin', 'method' => 'perfil',                                                                            'permission' => null],
+  ];
+
+  // Merge helper: añade items a un grupo existente o crea uno nuevo al final.
+  // Como "Sistema" aún no está en $nav, los plugins que aporten al grupo "Sistema"
+  // se consolidarán correctamente cuando lo agreguemos al final.
+  $sistemaExtraItems = [];
+  $mergeGroups = function(array $extraGroups) use (&$nav, &$sistemaExtraItems) {
     foreach ($extraGroups as $eg) {
       if (empty($eg['group']) || empty($eg['items'])) continue;
+      // Items para "Sistema" se guardan para mergear al final
+      if ($eg['group'] === 'Sistema') {
+        $sistemaExtraItems = array_merge($sistemaExtraItems, $eg['items']);
+        continue;
+      }
       $foundIndex = null;
       foreach ($nav as $i => $existing) {
         if (($existing['group'] ?? null) === $eg['group']) { $foundIndex = $i; break; }
@@ -67,6 +74,12 @@
 
   $mergeGroups($pluginGroups);
   $mergeGroups(array_values($customGroups));
+
+  // Sistema siempre va al final, con items del core primero + los que aportaron plugins
+  $nav[] = [
+    'group' => 'Sistema',
+    'items' => array_merge($sistemaItems, $sistemaExtraItems),
+  ];
 
   // ¿Hay algún item activo en cada grupo? → lo necesitamos para auto-expandir
   // el grupo activo por default (aunque el usuario haya colapsado otros).
@@ -111,7 +124,7 @@
           @foreach($visibleItems as $item)
             <a href="{{ $item['url'] }}"
                class="flex items-center gap-3 px-6 py-2.5 text-sm transition {{ $isActive($item['controller'] ?? '', $item['method'] ?? null, $item['activeMethods'] ?? []) ? 'active' : '' }}">
-              <i class="{{ $item['icon'] ?? 'ri-folder-line' }} text-lg"></i>
+              <i class="{{ $item['icon'] ?? 'ri-folder-line' }} text-lg {{ $item['iconColor'] ?? 'text-slate-400' }}"></i>
               <span>{{ $item['label'] }}</span>
             </a>
           @endforeach

@@ -1037,6 +1037,48 @@ class adminController extends Controller implements ControllerInterface
     $this->render();
   }
 
+  /**
+   * Sincroniza permisos declarados por plugins (en plugin.json o hook plugin_permissions).
+   * Inserta los faltantes y los auto-asigna a los roles admin y developer.
+   */
+  function post_sync_permisos()
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $summary = QuetzalRoleManager::syncPermissions();
+
+      $parts = [];
+      if (!empty($summary['added'])) {
+        $parts[] = sprintf('%d nuevo(s): %s', count($summary['added']),
+          implode(', ', array_slice($summary['added'], 0, 5)) . (count($summary['added']) > 5 ? '...' : ''));
+      }
+      if (!empty($summary['skipped'])) {
+        $parts[] = sprintf('%d ya existían', count($summary['skipped']));
+      }
+      if (!empty($summary['assigned'])) {
+        $parts[] = sprintf('%d asignaciones a admin/developer', count($summary['assigned']));
+      }
+
+      if (!empty($summary['errors'])) {
+        Flasher::error('Errores: ' . implode(' · ', $summary['errors']));
+      } elseif (empty($summary['added'])) {
+        Flasher::new('No hay permisos nuevos que agregar. ' . (empty($summary['skipped']) ? 'Ningún plugin declara permisos.' : count($summary['skipped']) . ' ya registrados.'), 'info');
+      } else {
+        Flasher::success('Permisos sincronizados: ' . implode(' · ', $parts));
+      }
+
+      Redirect::to('admin/permisos');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
   function crear_permiso()
   {
     $this->guardAdminAccess();
