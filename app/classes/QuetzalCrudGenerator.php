@@ -30,6 +30,11 @@ class QuetzalCrudGenerator
     'date'     => 'date',
     'datetime' => 'datetime',
     'select'   => 'varchar(100)',  // default; override a int(11) si source=table
+    'password' => 'varchar(255)',  // se guarda hasheado con password_hash()
+    'email'    => 'varchar(150)',
+    'file'     => 'varchar(255)',  // guarda el nombre del archivo; el archivo va a uploads/
+    'hidden'   => 'varchar(255)',  // puede almacenar cualquier string
+    'button'   => null,            // no crea columna; solo render
   ];
 
   /**
@@ -136,8 +141,10 @@ class QuetzalCrudGenerator
 
   /**
    * Genera un controlador con los 7 métodos CRUD estándar.
+   * $fields se usa para generar código específico por tipo (file upload,
+   * hash de passwords, validación de email, exclusión de buttons).
    */
-  public function generateController(string $name, string $table): array
+  public function generateController(string $name, string $table, array $fields = []): array
   {
     $name  = $this->validateName($name, 'controlador');
     $table = $this->validateTable($table);
@@ -147,7 +154,7 @@ class QuetzalCrudGenerator
       return $this->err('El controlador "' . $name . 'Controller" ya existe.');
     }
 
-    $content = $this->controllerTemplate($name, $table);
+    $content = $this->controllerTemplate($name, $table, $fields);
     return $this->write($file, $content, $this->displayPaths['controllers'] . $name . 'Controller.php');
   }
 
@@ -198,7 +205,7 @@ class QuetzalCrudGenerator
 
     $results[] = ['type' => 'model'] + $this->generateModel($name, $table);
     $results[] = ['type' => 'migration'] + $this->generateMigration($table, $fields);
-    $results[] = ['type' => 'controller'] + $this->generateController($name, $table);
+    $results[] = ['type' => 'controller'] + $this->generateController($name, $table, $fields);
 
     foreach ($this->generateViews($name, $fields) as $viewResult) {
       $results[] = ['type' => 'view'] + $viewResult;
@@ -250,7 +257,7 @@ class QuetzalCrudGenerator
     // === MASTER ===
     $results[] = ['type' => 'master-model']      + $this->generateModel($masterName, $masterTable);
     $results[] = ['type' => 'master-migration']  + $this->generateMigration($masterTable, $masterFields);
-    $results[] = ['type' => 'master-controller'] + $this->generateController($masterName, $masterTable);
+    $results[] = ['type' => 'master-controller'] + $this->generateController($masterName, $masterTable, $masterFields);
 
     // Vistas del master: index/crear/editar normales + verView enriquecido
     foreach ($this->generateViews($masterName, $masterFields) as $viewResult) {
@@ -271,7 +278,7 @@ class QuetzalCrudGenerator
     // === DETAIL ===
     $results[] = ['type' => 'detail-model']      + $this->generateModel($detailName, $detailTable);
     $results[] = ['type' => 'detail-migration']  + $this->generateMigration($detailTable, $detailFieldsWithFk);
-    $results[] = ['type' => 'detail-controller'] + $this->generateController($detailName, $detailTable);
+    $results[] = ['type' => 'detail-controller'] + $this->generateController($detailName, $detailTable, $detailFieldsWithFk);
 
     foreach ($this->generateViews($detailName, $detailFieldsWithFk) as $viewResult) {
       $results[] = ['type' => 'detail-view'] + $viewResult;
@@ -452,6 +459,25 @@ BLADE;
       'unique'   => !empty($field['unique']),
     ];
 
+    // Metadata específica para tipos no-estándar
+    if ($type === 'hidden') {
+      $out['default_value'] = (string)($field['default_value'] ?? '');
+    }
+    if ($type === 'button') {
+      $out['button_label']  = (string)($field['button_label']  ?? 'Acción');
+      $out['button_icon']   = preg_match('/^ri-[a-z0-9-]{1,50}$/', $field['button_icon'] ?? '')
+                              ? $field['button_icon'] : '';
+      $out['button_action'] = in_array($field['button_action'] ?? 'submit', ['submit', 'reset', 'link'], true)
+                              ? $field['button_action'] : 'submit';
+      $out['button_url']    = (string)($field['button_url'] ?? '');
+      $out['button_style']  = in_array($field['button_style'] ?? 'primary', ['primary', 'secondary', 'danger'], true)
+                              ? $field['button_style'] : 'primary';
+    }
+    if ($type === 'file') {
+      // Subtipo del archivo para validar extensiones por defecto
+      $out['file_accept'] = (string)($field['file_accept'] ?? '');  // ej: ".pdf,.docx" o "image/*"
+    }
+
     // Metadata específica de select
     if ($type === 'select') {
       $out['select_source']    = in_array($field['select_source'] ?? 'static', ['static', 'table'], true)
@@ -480,20 +506,34 @@ BLADE;
 
   private function buildFieldsSql(array $fields): string
   {
-    $lines = [];
+    $lines   = [];
     $uniques = [];
+    $fks     = [];
 
     foreach ($fields as $raw) {
       $f = $this->validateField($raw);
 
+      // Botón: no genera columna
+      if ($f['type'] === 'button') continue;
+
       $sqlType = self::FIELD_TYPES[$f['type']];
+      if ($sqlType === null) continue;
       if (strpos($sqlType, '%d') !== false) {
         $sqlType = sprintf($sqlType, max(1, min(65535, $f['length'])));
       }
 
-      // Select con source=table → es una FK, almacenar como int(11)
+      // Select con source=table → es una FK, almacenar como int(11) + constraint
       if ($f['type'] === 'select' && ($f['select_source'] ?? 'static') === 'table') {
         $sqlType = 'int(11)';
+        if (!empty($f['select_table']) && !empty($f['select_value_col'])) {
+          $fks[] = sprintf(
+            '            CONSTRAINT `%s_fk` FOREIGN KEY (`%s`) REFERENCES `%s`(`%s`) ON DELETE SET NULL ON UPDATE CASCADE',
+            substr($f['name'], 0, 48),  // constraint names con límite de 64 chars
+            $f['name'],
+            $f['select_table'],
+            $f['select_value_col']
+          );
+        }
       }
 
       $null = $f['required'] ? 'NOT NULL' : 'DEFAULT NULL';
@@ -520,9 +560,8 @@ BLADE;
     $parts[] = '            `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()';
     $parts[] = '            PRIMARY KEY (`id`)';
 
-    if ($uniques) {
-      $parts = array_merge($parts, $uniques);
-    }
+    if ($uniques) $parts = array_merge($parts, $uniques);
+    if ($fks)     $parts = array_merge($parts, $fks);
 
     return implode(",\n", $parts);
   }
@@ -606,10 +645,127 @@ return new class {
 PHP;
   }
 
-  private function controllerTemplate(string $name, string $table): string
+  /**
+   * Genera el bloque PHP para subir archivos de los campos tipo file.
+   * En crear: mueve y asigna el filename. En editar: solo si se subió uno
+   * nuevo (si no, elimina la key para NO sobrescribir el valor actual).
+   */
+  private function buildFileUploadBlock(array $fileFields, bool $isEdit): string
+  {
+    if (empty($fileFields)) return '';
+    $out = "\n      // ===== Uploads =====\n";
+    foreach ($fileFields as $f) {
+      $n = $f['name'];
+      $out .= "      if (!empty(\$_FILES['{$n}']['name']) && \$_FILES['{$n}']['error'] === UPLOAD_ERR_OK) {\n"
+            . "        \$__tmp = \$_FILES['{$n}']['tmp_name'];\n"
+            . "        \$__ext = strtolower(pathinfo(\$_FILES['{$n}']['name'], PATHINFO_EXTENSION));\n"
+            . "        \$__new = (function_exists('generate_filename') ? generate_filename() : bin2hex(random_bytes(8))) . '.' . \$__ext;\n"
+            . "        if (!move_uploaded_file(\$__tmp, UPLOADS . \$__new)) {\n"
+            . "          throw new Exception('No se pudo guardar el archivo de \"{$n}\".');\n"
+            . "        }\n";
+      if ($isEdit) {
+        $out .= "        // Borrar el archivo anterior (si existía)\n"
+              . "        if (!empty(\$row['{$n}']) && is_file(UPLOADS . \$row['{$n}'])) @unlink(UPLOADS . \$row['{$n}']);\n";
+      }
+      $out .= "        \$data['{$n}'] = \$__new;\n"
+            . "      } else {\n"
+            . ($isEdit
+                ? "        // No se subió un archivo nuevo: preservar el actual\n        unset(\$data['{$n}']);\n"
+                : "        \$data['{$n}'] = null;\n")
+            . "      }\n";
+    }
+    return $out;
+  }
+
+  /**
+   * Bloque de hash de password. En editar: si viene vacío, se preserva el actual.
+   */
+  private function buildPasswordBlock(array $passwordFields, bool $isEdit): string
+  {
+    if (empty($passwordFields)) return '';
+    $out = "\n      // ===== Passwords (hashed) =====\n";
+    foreach ($passwordFields as $f) {
+      $n = $f['name'];
+      if ($isEdit) {
+        $out .= "      if (!empty(\$_POST['{$n}'])) {\n"
+              . "        \$data['{$n}'] = password_hash(\$_POST['{$n}'] . (defined('AUTH_SALT') ? AUTH_SALT : ''), PASSWORD_BCRYPT);\n"
+              . "      } else {\n"
+              . "        unset(\$data['{$n}']);\n"
+              . "      }\n";
+      } else {
+        $out .= "      if (empty(\$_POST['{$n}'])) {\n"
+              . "        throw new Exception('La contraseña es requerida.');\n"
+              . "      }\n"
+              . "      \$data['{$n}'] = password_hash(\$_POST['{$n}'] . (defined('AUTH_SALT') ? AUTH_SALT : ''), PASSWORD_BCRYPT);\n";
+      }
+    }
+    return $out;
+  }
+
+  /**
+   * Valida emails con FILTER_VALIDATE_EMAIL.
+   */
+  private function buildEmailValidationBlock(array $emailFields): string
+  {
+    if (empty($emailFields)) return '';
+    $out = "\n      // ===== Validación de emails =====\n";
+    foreach ($emailFields as $f) {
+      $n = $f['name'];
+      $out .= "      if (!empty(\$data['{$n}']) && !filter_var(\$data['{$n}'], FILTER_VALIDATE_EMAIL)) {\n"
+            . "        throw new Exception('El email en \"{$n}\" no es válido.');\n"
+            . "      }\n";
+    }
+    return $out;
+  }
+
+  /**
+   * Coerciona booleanos a 0/1 (checkboxes que no vienen se fuerzan a 0).
+   */
+  private function buildBooleanBlock(array $booleanFields): string
+  {
+    if (empty($booleanFields)) return '';
+    $out = "\n      // ===== Booleans (0/1) =====\n";
+    foreach ($booleanFields as $f) {
+      $n = $f['name'];
+      $out .= "      \$data['{$n}'] = !empty(\$_POST['{$n}']) ? 1 : 0;\n";
+    }
+    return $out;
+  }
+
+  private function controllerTemplate(string $name, string $table, array $fields = []): string
   {
     $singular = $name;
     $model    = $name . 'Model';
+
+    // Clasificar campos para generar código específico
+    $fileFields     = [];   // subir archivos
+    $passwordFields = [];   // hashear
+    $emailFields    = [];   // validar
+    $booleanFields  = [];   // coerción 0/1
+    $buttonFields   = [];   // excluir del data
+    foreach ($fields as $f) {
+      try {
+        $v = $this->validateField($f);
+      } catch (Throwable $e) { continue; }
+      if ($v['type'] === 'file')     $fileFields[]     = $v;
+      if ($v['type'] === 'password') $passwordFields[] = $v;
+      if ($v['type'] === 'email')    $emailFields[]    = $v;
+      if ($v['type'] === 'boolean')  $booleanFields[]  = $v;
+      if ($v['type'] === 'button')   $buttonFields[]   = $v;
+    }
+
+    // Bloques de código generados
+    $fileUploadBlockCrear  = $this->buildFileUploadBlock($fileFields, false);
+    $fileUploadBlockEditar = $this->buildFileUploadBlock($fileFields, true);
+    $passwordBlockCrear    = $this->buildPasswordBlock($passwordFields, false);
+    $passwordBlockEditar   = $this->buildPasswordBlock($passwordFields, true);
+    $emailValidationBlock  = $this->buildEmailValidationBlock($emailFields);
+    $booleanBlock          = $this->buildBooleanBlock($booleanFields);
+    $unsetButtonsBlock     = '';
+    if (!empty($buttonFields)) {
+      $names = array_map(fn($b) => "'" . $b['name'] . "'", $buttonFields);
+      $unsetButtonsBlock = "      foreach ([" . implode(', ', $names) . "] as \$__b) unset(\$data[\$__b]);\n";
+    }
 
     return <<<PHP
 <?php
@@ -662,12 +818,11 @@ class {$singular}Controller extends Controller implements ControllerInterface
         throw new Exception(get_quetzal_message(0));
       }
 
-      // TODO: validaciones según los campos de tu tabla
       array_map('sanitize_input', \$_POST);
 
       \$data = \$_POST;
       unset(\$data['csrf'], \$data['redirect_to'], \$data['timecheck']);
-      \$data['created_at'] = now();
+{$unsetButtonsBlock}{$emailValidationBlock}{$booleanBlock}{$passwordBlockCrear}{$fileUploadBlockCrear}      \$data['created_at'] = now();
 
       if (!\$id = {$model}::insertOne(\$data)) {
         throw new Exception('No se pudo crear el registro.');
@@ -726,7 +881,7 @@ class {$singular}Controller extends Controller implements ControllerInterface
       array_map('sanitize_input', \$_POST);
       \$data = \$_POST;
       unset(\$data['csrf'], \$data['redirect_to'], \$data['timecheck'], \$data['id']);
-
+{$unsetButtonsBlock}{$emailValidationBlock}{$booleanBlock}{$passwordBlockEditar}{$fileUploadBlockEditar}
       if (!{$model}::updateById(\$id, \$data)) {
         throw new Exception('No se pudo actualizar el registro.');
       }
@@ -942,6 +1097,69 @@ BLADE;
     if ($v['type'] === 'select') {
       return $this->renderSelectInput($v, $isEdit, $colSpan, $label, $star, $req);
     }
+    if ($v['type'] === 'password') {
+      // En editar NO prellenamos (user-friendly + seguridad). El controlador deja el
+      // password actual si se deja vacío.
+      $hint = $isEdit
+        ? '<p class="text-xs text-slate-400 mt-1">Déjalo vacío para no cambiar.</p>'
+        : '';
+      $reqAttr = $isEdit ? '' : $req;  // no requerido en edit
+      return "      <div class=\"{$colSpan}\">\n"
+           . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
+           . "        <input type=\"password\" name=\"{$v['name']}\" minlength=\"6\" maxlength=\"{$v['length']}\" autocomplete=\"new-password\" {$reqAttr} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+           . "        {$hint}\n"
+           . "      </div>\n";
+    }
+    if ($v['type'] === 'email') {
+      return "      <div class=\"{$colSpan}\">\n"
+           . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
+           . "        <input type=\"email\" name=\"{$v['name']}\" maxlength=\"{$v['length']}\"{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+           . "      </div>\n";
+    }
+    if ($v['type'] === 'file') {
+      $accept = !empty($v['file_accept']) ? ' accept="' . htmlspecialchars($v['file_accept'], ENT_QUOTES) . '"' : '';
+      $current = $isEdit
+        ? "        @if(!empty(\$row['{$v['name']}']))\n"
+         . "          <p class=\"text-xs text-slate-500 mt-1\">Actual: <a href=\"uploads/{{ \$row['{$v['name']}'] }}\" target=\"_blank\" class=\"text-primary hover:underline\">{{ \$row['{$v['name']}'] }}</a>. Sube uno nuevo para reemplazar.</p>\n"
+         . "        @endif\n"
+        : '';
+      $reqAttr = $isEdit ? '' : $req;
+      return "      <div class=\"{$colSpan}\">\n"
+           . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
+           . "        <input type=\"file\" name=\"{$v['name']}\"{$accept} {$reqAttr} class=\"w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:text-white file:font-semibold file:px-3 file:py-2 hover:file:opacity-90\">\n"
+           . $current
+           . "      </div>\n";
+    }
+    if ($v['type'] === 'hidden') {
+      // Si viene valor en el row (edit) lo usa; si no, toma el default_value. Se puede overridear
+      // desde query string ?<name>=... para pre-fill en URL.
+      $default = addslashes((string)($v['default_value'] ?? ''));
+      $valPhp = $isEdit
+        ? "\$row['{$v['name']}'] ?? (\$_GET['{$v['name']}'] ?? '{$default}')"
+        : "\$_GET['{$v['name']}'] ?? '{$default}'";
+      return "      <input type=\"hidden\" name=\"{$v['name']}\" value=\"{{ {$valPhp} }}\">\n";
+    }
+    if ($v['type'] === 'button') {
+      $lbl    = htmlspecialchars($v['button_label'] ?? 'Acción', ENT_QUOTES);
+      $icon   = !empty($v['button_icon']) ? '<i class="' . htmlspecialchars($v['button_icon'], ENT_QUOTES) . '"></i> ' : '';
+      $style  = $v['button_style'] ?? 'primary';
+      $cls    = match($style) {
+        'danger'    => 'bg-red-600 hover:bg-red-700 text-white',
+        'secondary' => 'border border-slate-200 text-slate-700 hover:bg-slate-50',
+        default     => 'btn-primary',
+      };
+      $action = $v['button_action'] ?? 'submit';
+      if ($action === 'link' && !empty($v['button_url'])) {
+        $url = htmlspecialchars($v['button_url'], ENT_QUOTES);
+        return "      <div class=\"{$colSpan} flex items-end\">\n"
+             . "        <a href=\"{$url}\" class=\"inline-flex items-center gap-2 px-4 py-2 rounded-lg {$cls} text-sm font-semibold\">{$icon}{$lbl}</a>\n"
+             . "      </div>\n";
+      }
+      $btnType = $action === 'reset' ? 'reset' : 'button';  // no queremos que sea submit duplicado
+      return "      <div class=\"{$colSpan} flex items-end\">\n"
+           . "        <button type=\"{$btnType}\" name=\"{$v['name']}\" value=\"1\" class=\"inline-flex items-center gap-2 px-4 py-2 rounded-lg {$cls} text-sm font-semibold\">{$icon}{$lbl}</button>\n"
+           . "      </div>\n";
+    }
     // string (default)
     return "      <div class=\"{$colSpan}\">\n"
          . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
@@ -1011,11 +1229,14 @@ BLADE;
 
   private function viewCrearTemplate(string $name, array $fields): string
   {
-    $inputs = '';
+    $inputs  = '';
+    $hasFile = false;
     foreach ($fields as $f) {
       $v = $this->validateField($f);
+      if ($v['type'] === 'file') $hasFile = true;
       $inputs .= $this->renderFieldInput($v, false);
     }
+    $enctype = $hasFile ? ' enctype="multipart/form-data"' : '';
 
     return <<<BLADE
 @extends('includes.admin.layout')
@@ -1031,7 +1252,7 @@ BLADE;
     </a>
   </div>
 
-  <form method="post" action="{$name}/post_crear" class="bg-white rounded-xl border border-slate-200 p-6 sm:p-8 space-y-5">
+  <form method="post" action="{$name}/post_crear"{$enctype} class="bg-white rounded-xl border border-slate-200 p-6 sm:p-8 space-y-5">
     @csrf
     <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
 {$inputs}    </div>
@@ -1050,11 +1271,14 @@ BLADE;
 
   private function viewEditarTemplate(string $name, array $fields): string
   {
-    $inputs = '';
+    $inputs  = '';
+    $hasFile = false;
     foreach ($fields as $f) {
       $v = $this->validateField($f);
+      if ($v['type'] === 'file') $hasFile = true;
       $inputs .= $this->renderFieldInput($v, true);
     }
+    $enctype = $hasFile ? ' enctype="multipart/form-data"' : '';
 
     return <<<BLADE
 @extends('includes.admin.layout')
@@ -1070,7 +1294,7 @@ BLADE;
     </a>
   </div>
 
-  <form method="post" action="{$name}/post_editar" class="bg-white rounded-xl border border-slate-200 p-6 sm:p-8 space-y-5">
+  <form method="post" action="{$name}/post_editar"{$enctype} class="bg-white rounded-xl border border-slate-200 p-6 sm:p-8 space-y-5">
     @csrf
     <input type="hidden" name="id" value="{{ \$row['id'] }}">
     <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
