@@ -79,6 +79,7 @@
             <i class="ri-information-line mt-0.5"></i>
             <div>
               <p>El ZIP debe contener un <code class="bg-sky-100 px-1 rounded">plugin.json</code> en la raíz o dentro de una sola carpeta.</p>
+              <p class="mt-1">Si el plugin ya existe, se <strong>actualizará</strong> automáticamente (con backup y rollback si falla).</p>
               <p class="mt-1">Tras subirlo aparecerá como <strong>activo</strong> automáticamente (plugins zero-config).</p>
             </div>
           </div>
@@ -392,6 +393,17 @@
                     </button>
                   </form>
                 @endif
+
+                <form method="post" action="admin/post_plugin_delete" class="inline"
+                      onsubmit="return confirm('¿ELIMINAR el plugin &quot;{{ $p['name'] }}&quot; del disco?\n\nEsta acción borra todos los archivos de plugins/{{ $p['name'] }}/ y es IRREVERSIBLE.\n\nLas tablas de BD creadas por sus migraciones NO se eliminan automáticamente — hazlo desde Migraciones si lo deseas.');">
+                  @csrf
+                  <input type="hidden" name="name" value="{{ $p['name'] }}">
+                  <button type="submit"
+                          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium"
+                          title="Eliminar el plugin del disco (irreversible)">
+                    <i class="ri-delete-bin-line"></i> Eliminar
+                  </button>
+                </form>
               </div>
 
               <a href="admin/migraciones" class="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-primary">

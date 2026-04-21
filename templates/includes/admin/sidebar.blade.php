@@ -44,6 +44,7 @@
       ['label' => 'Plugins',      'icon' => 'ri-plug-line',        'url' => 'admin/plugins',      'controller' => 'admin', 'method' => 'plugins',     'activeMethods' => ['plugins_guia'], 'permission' => 'admin-access'],
       ['label' => 'Generador',    'icon' => 'ri-terminal-box-line','url' => 'admin/generador',    'controller' => 'admin', 'method' => 'generador',   'permission' => 'admin-access'],
       ['label' => 'Migraciones',  'icon' => 'ri-database-2-line',  'url' => 'admin/migraciones',  'controller' => 'admin', 'method' => 'migraciones', 'permission' => 'admin-access'],
+      ['label' => 'Tablas BD',    'icon' => 'ri-table-line',       'url' => 'admin/tablas',       'controller' => 'admin', 'method' => 'tablas',      'permission' => 'admin-access'],
       ['label' => 'Apariencia',   'icon' => 'ri-palette-line',     'url' => 'admin/apariencia',   'controller' => 'admin', 'method' => 'apariencia',  'permission' => 'admin-access'],
       ['label' => 'Perfil',       'icon' => 'ri-id-card-line',     'url' => 'admin/perfil',       'controller' => 'admin', 'method' => 'perfil',      'permission' => null],
     ]],

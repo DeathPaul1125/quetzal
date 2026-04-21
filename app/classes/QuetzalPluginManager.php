@@ -465,18 +465,18 @@ class QuetzalPluginManager
   }
 
   /**
-   * Instala un plugin desde un archivo ZIP subido.
+   * Instala o actualiza un plugin desde un archivo ZIP subido.
    *
    * Flujo:
    *   1. Abre el ZIP y busca un plugin.json (raíz o primer subdirectorio)
    *   2. Valida el manifiesto (name, estructura básica)
-   *   3. Verifica que no exista ya una carpeta de plugin con ese nombre
+   *   3. Si ya existe la carpeta del plugin, se considera una ACTUALIZACIÓN:
+   *      se hace backup, se elimina la carpeta y se extrae el nuevo ZIP.
+   *      Si falla, se restaura el backup automáticamente.
    *   4. Extrae los archivos con sanitización de path (previene zip-slip)
-   *   5. Deja el plugin en estado "descubierto" (el usuario lo instala/habilita
-   *      después con las acciones normales)
    *
    * @param string $zipPath Ruta absoluta al ZIP (típicamente $_FILES['x']['tmp_name'])
-   * @return array{name:string, version:string, extracted:int, path:string}
+   * @return array{name:string, version:string, extracted:int, path:string, updated:bool}
    * @throws Exception en cualquier validación fallida
    */
   public function installFromZip(string $zipPath): array
@@ -534,12 +534,19 @@ class QuetzalPluginManager
     }
 
     $targetDir = self::pluginsDir() . $pluginName . DS;
-    if (is_dir($targetDir)) {
-      $zip->close();
-      throw new Exception(sprintf(
-        'Ya existe un plugin con el nombre "%s". Desinstálalo o elimínalo primero.',
-        $pluginName
-      ));
+    $isUpdate  = is_dir($targetDir);
+    $backupDir = null;
+
+    // Si ya existe, hacer backup antes de sobreescribir (update)
+    if ($isUpdate) {
+      $backupDir = self::pluginsDir() . '.backup_' . $pluginName . '_' . time();
+      if (!@rename($targetDir, $backupDir)) {
+        $zip->close();
+        throw new Exception(sprintf(
+          'No se pudo hacer backup del plugin existente "%s". Revisa permisos.',
+          $pluginName
+        ));
+      }
     }
 
     // Extracción segura
@@ -607,11 +614,17 @@ class QuetzalPluginManager
         throw new Exception('La extracción no produjo un plugin.json válido.');
       }
 
+      // Extracción OK: eliminar backup si existía
+      if ($backupDir !== null && is_dir($backupDir)) {
+        $this->removeDirectory($backupDir);
+      }
+
       return [
         'name'      => $pluginName,
         'version'   => (string) ($manifest['version'] ?? '0.0.0'),
         'extracted' => $extracted,
         'path'      => $targetDir,
+        'updated'   => $isUpdate,
       ];
 
     } catch (Exception $e) {
@@ -620,8 +633,65 @@ class QuetzalPluginManager
         @$zip->close();
       }
       $this->removeDirectory($targetDir);
+
+      // Restaurar backup si era un update
+      if ($backupDir !== null && is_dir($backupDir)) {
+        @rename($backupDir, $targetDir);
+      }
       throw $e;
     }
+  }
+
+  /**
+   * Elimina un plugin por completo: borra su carpeta del disco y limpia
+   * el registro. Si el plugin está habilitado, se deshabilita primero
+   * (validando que no haya otros plugins que dependan de él).
+   *
+   * @param string $name Nombre del plugin
+   * @return array{removed_files:int, path:string}
+   * @throws Exception si el plugin no existe o no se puede eliminar
+   */
+  public function deletePlugin(string $name): array
+  {
+    $discovered = $this->discover();
+    if (!isset($discovered[$name])) {
+      throw new Exception(sprintf('El plugin "%s" no existe.', $name));
+    }
+
+    $manifest  = $discovered[$name];
+    $pluginDir = $manifest['path'];
+
+    // Verificación de integridad del path antes de borrar
+    $pluginsDir = realpath(self::pluginsDir());
+    $targetReal = realpath($pluginDir);
+    if ($pluginsDir === false || $targetReal === false
+        || strpos($targetReal, $pluginsDir) !== 0
+        || $targetReal === $pluginsDir) {
+      throw new Exception('Ruta del plugin inválida — no se procederá con la eliminación.');
+    }
+
+    // Si está habilitado, primero deshabilitarlo (valida dependencias)
+    if ($this->isEnabled($name)) {
+      $this->disable($name);
+    }
+
+    // Limpiar registro
+    $this->removeRecord($name);
+
+    // Borrar archivos del disco
+    $this->removeDirectory($pluginDir);
+
+    if (is_dir($pluginDir)) {
+      throw new Exception(sprintf(
+        'No se pudo eliminar completamente la carpeta del plugin "%s". Revisa permisos.',
+        $name
+      ));
+    }
+
+    return [
+      'removed_files' => 1,
+      'path'          => $pluginDir,
+    ];
   }
 
   /**

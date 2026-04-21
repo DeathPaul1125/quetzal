@@ -3,10 +3,37 @@
 @section('title', 'Dashboard')
 @section('page_title', 'Dashboard')
 
+@php
+  // Visibilidad por defecto de los bloques del dashboard. Los plugins pueden
+  // sobrescribir esta decisión devolviendo ['stats' => bool, 'welcome' => bool]
+  // desde el hook 'dashboard_show_defaults'.
+  $showDefaultStats   = true;
+  $showDefaultWelcome = true;
+
+  if (class_exists('QuetzalHookManager')) {
+    foreach (QuetzalHookManager::getHookData('dashboard_show_defaults') as $res) {
+      if (is_array($res)) {
+        if (isset($res['stats']))   $showDefaultStats   = (bool) $res['stats'];
+        if (isset($res['welcome'])) $showDefaultWelcome = (bool) $res['welcome'];
+      }
+    }
+  }
+@endphp
+
 @section('content')
 <div class="space-y-6">
 
-  {{-- Stats cards --}}
+  {{-- Hook: contenido ANTES del dashboard (ej. alertas de plugins) --}}
+  @if(class_exists('QuetzalHookManager'))
+    @foreach(QuetzalHookManager::getHookData('dashboard_before') as $html)
+      @if(is_string($html) && $html !== '')
+        {!! $html !!}
+      @endif
+    @endforeach
+  @endif
+
+  {{-- Stats cards (por defecto) --}}
+  @if($showDefaultStats)
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
     @php
       $stats = [
@@ -28,8 +55,19 @@
       </div>
     @endforeach
   </div>
+  @endif
 
-  {{-- Welcome card --}}
+  {{-- Hook: widgets aportados por plugins (cards, charts, etc.) --}}
+  @if(class_exists('QuetzalHookManager'))
+    @foreach(QuetzalHookManager::getHookData('dashboard_widgets') as $html)
+      @if(is_string($html) && $html !== '')
+        {!! $html !!}
+      @endif
+    @endforeach
+  @endif
+
+  {{-- Welcome card (por defecto) --}}
+  @if($showDefaultWelcome)
   <div class="bg-white rounded-xl border border-slate-200 p-6 sm:p-8">
     <div class="flex flex-col sm:flex-row sm:items-start gap-6">
       <div class="flex-1">
@@ -59,5 +97,15 @@
       </div>
     </div>
   </div>
+  @endif
+
+  {{-- Hook: contenido DESPUÉS del dashboard --}}
+  @if(class_exists('QuetzalHookManager'))
+    @foreach(QuetzalHookManager::getHookData('dashboard_after') as $html)
+      @if(is_string($html) && $html !== '')
+        {!! $html !!}
+      @endif
+    @endforeach
+  @endif
 </div>
 @endsection

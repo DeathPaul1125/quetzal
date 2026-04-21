@@ -294,6 +294,17 @@ class adminController extends Controller implements ControllerInterface
     );
   }
 
+  /**
+   * Elimina por completo un plugin del disco (irreversible).
+   */
+  function post_plugin_delete()
+  {
+    $this->handlePluginAction(
+      fn($mgr, $name) => $mgr->deletePlugin($name),
+      'Plugin <b>%s</b> eliminado del disco por completo.'
+    );
+  }
+
   ////////////////////////////////////////////////////
   //////// GENERADOR DE CRUD (consola tipo terminal)
   ////////////////////////////////////////////////////
@@ -511,10 +522,17 @@ class adminController extends Controller implements ControllerInterface
 
       $info = QuetzalPluginManager::getInstance()->installFromZip($file['tmp_name']);
 
-      Flasher::success(sprintf(
-        'Plugin <b>%s</b> v%s subido (%d archivo(s) extraídos). Ahora puedes instalarlo y habilitarlo.',
-        $info['name'], $info['version'], $info['extracted']
-      ));
+      if (!empty($info['updated'])) {
+        Flasher::success(sprintf(
+          'Plugin <b>%s</b> actualizado a v%s (%d archivo(s) extraídos). Recuerda reconstruir para aplicar migraciones nuevas.',
+          $info['name'], $info['version'], $info['extracted']
+        ));
+      } else {
+        Flasher::success(sprintf(
+          'Plugin <b>%s</b> v%s subido (%d archivo(s) extraídos). Ya está disponible en la lista.',
+          $info['name'], $info['version'], $info['extracted']
+        ));
+      }
       Redirect::to('admin/plugins');
 
     } catch (Exception $e) {
@@ -721,6 +739,154 @@ class adminController extends Controller implements ControllerInterface
       Flasher::error($e->getMessage());
       Redirect::back();
     }
+  }
+
+  ////////////////////////////////////////////////////
+  //////// TABLAS DE BASE DE DATOS
+  ////////////////////////////////////////////////////
+
+  /**
+   * Lista de tablas de la BD con su tamaño y cantidad de filas.
+   * Permite eliminar tablas individualmente (destructivo).
+   */
+  function tablas()
+  {
+    $this->guardAdminAccess();
+
+    try {
+      $pdo = $this->getPdo();
+
+      $stmt = $pdo->prepare('
+        SELECT TABLE_NAME  AS name,
+               TABLE_ROWS  AS rows_approx,
+               DATA_LENGTH + INDEX_LENGTH AS size_bytes,
+               CREATE_TIME AS created_at,
+               UPDATE_TIME AS updated_at
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_SCHEMA = :db
+        ORDER BY TABLE_NAME ASC
+      ');
+      $stmt->execute(['db' => DB_NAME]);
+      $tables = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+      // Marcar cuáles son del sistema / no deberían borrarse sin pensar
+      $protected = ['quetzal_users', 'quetzal_roles', 'quetzal_permisos',
+                    'quetzal_roles_permisos', 'quetzal_options',
+                    'quetzal_migrations'];
+
+      foreach ($tables as &$t) {
+        $t['is_protected'] = in_array($t['name'], $protected, true)
+                          || str_starts_with($t['name'], 'plugin_')
+                          && str_ends_with($t['name'], '_migrations');
+        $t['size_human'] = $this->humanBytes((int)($t['size_bytes'] ?? 0));
+      }
+      unset($t);
+
+      $this->setTitle('Tablas de BD');
+      $this->addToData('tables', $tables);
+      $this->addToData('dbName', DB_NAME);
+      $this->setView('tablas');
+      $this->render();
+
+    } catch (Exception $e) {
+      Flasher::error('Error al listar tablas: ' . $e->getMessage());
+      Redirect::to('admin');
+    }
+  }
+
+  /**
+   * Elimina (DROP) una tabla. Protegida para las tablas del sistema;
+   * si el usuario marca 'force=1' se pueden borrar igual (para limpieza total).
+   */
+  function post_drop_table()
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $table = sanitize_input($_POST['table'] ?? '');
+      $force = !empty($_POST['force']);
+
+      if (!preg_match('/^[a-zA-Z0-9_]{1,64}$/', $table)) {
+        throw new Exception('Nombre de tabla inválido.');
+      }
+
+      $protected = ['quetzal_users', 'quetzal_roles', 'quetzal_permisos',
+                    'quetzal_roles_permisos', 'quetzal_options',
+                    'quetzal_migrations'];
+      $isProtected = in_array($table, $protected, true);
+      if ($isProtected && !$force) {
+        throw new Exception(sprintf(
+          'La tabla <b>%s</b> es del sistema. Marca "forzar" si estás seguro.',
+          $table
+        ));
+      }
+
+      $pdo = $this->getPdo();
+
+      // Verificar existencia
+      $check = $pdo->prepare('
+        SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_SCHEMA = :db AND TABLE_NAME = :t LIMIT 1
+      ');
+      $check->execute(['db' => DB_NAME, 't' => $table]);
+      if (!$check->fetch()) {
+        throw new Exception(sprintf('La tabla "%s" no existe.', $table));
+      }
+
+      // DROP seguro (backticks para escapar). Deshabilita FK check temporalmente
+      // para permitir eliminar tablas con referencias rotas.
+      $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
+      $pdo->exec('DROP TABLE IF EXISTS `' . str_replace('`', '', $table) . '`');
+      $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
+
+      Flasher::success(sprintf('Tabla <b>%s</b> eliminada correctamente.', $table));
+      Redirect::to('admin/tablas');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
+  /**
+   * Ejecuta TRUNCATE sobre una tabla (borra datos, mantiene estructura).
+   */
+  function post_truncate_table()
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $table = sanitize_input($_POST['table'] ?? '');
+      if (!preg_match('/^[a-zA-Z0-9_]{1,64}$/', $table)) {
+        throw new Exception('Nombre de tabla inválido.');
+      }
+
+      $pdo = $this->getPdo();
+      $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
+      $pdo->exec('TRUNCATE TABLE `' . str_replace('`', '', $table) . '`');
+      $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
+
+      Flasher::success(sprintf('Tabla <b>%s</b> vaciada (TRUNCATE).', $table));
+      Redirect::to('admin/tablas');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
+  private function humanBytes(int $bytes): string
+  {
+    if ($bytes < 1024)             return $bytes . ' B';
+    if ($bytes < 1024 * 1024)      return round($bytes / 1024, 1) . ' KB';
+    if ($bytes < 1024 * 1024 * 1024) return round($bytes / 1024 / 1024, 1) . ' MB';
+    return round($bytes / 1024 / 1024 / 1024, 2) . ' GB';
   }
 
   ////////////////////////////////////////////////////
