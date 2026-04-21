@@ -9,8 +9,9 @@ app/controllers/pruebasController.php
 templates/views/pruebas/
 .env
 
-# Auto-removed by installer
-install.php
+# Nota: install.php SÍ se versiona.
+# El wizard lo auto-elimina localmente tras instalar, pero debe estar en git
+# para que clones frescos puedan correrlo.
 
 # Plugin de desarrollo (no se versiona con el framework)
 /plugins/VisualCrudBuilder/
