@@ -83,6 +83,15 @@
     @include('includes.admin.topbar', ['user' => $user])
 
     <main class="flex-1 p-4 sm:p-6 lg:p-8">
+      {{-- Hook: plugins pueden inyectar banners/alertas globales aquí --}}
+      @if(class_exists('QuetzalHookManager'))
+        @foreach(QuetzalHookManager::getHookData('admin_before_content') as $html)
+          @if(is_string($html) && $html !== '')
+            {!! $html !!}
+          @endif
+        @endforeach
+      @endif
+
       @if(class_exists('Flasher'))
         {!! Flasher::flash() !!}
       @endif

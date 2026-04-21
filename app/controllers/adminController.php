@@ -751,7 +751,7 @@ class adminController extends Controller implements ControllerInterface
 
   /**
    * Elimina el archivo de una migración. Requiere:
-   *   - path absoluto dentro de app/migrations/ o plugins/*/migrations/ (sandbox)
+   *   - path absoluto dentro de app/migrations/ o plugins/[name]/migrations/ (sandbox)
    *   - Si la migración ya corrió, obliga flag force=1 (destruye tracking también)
    */
   function post_borrar_migracion()

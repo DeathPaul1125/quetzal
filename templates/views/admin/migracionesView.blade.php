@@ -27,6 +27,80 @@
     </div>
   </div>
 
+  {{-- ============ DUPLICADOS ============ --}}
+  @if(!empty($duplicados))
+    <div class="bg-white rounded-xl border-2 border-red-300 overflow-hidden">
+      <div class="px-5 py-3 bg-red-50 border-b border-red-200 flex items-center gap-2">
+        <i class="ri-error-warning-fill text-red-600 text-xl"></i>
+        <div>
+          <h3 class="font-semibold text-red-900">Migraciones duplicadas detectadas</h3>
+          <p class="text-xs text-red-700">
+            {{ count($duplicados) }} tabla(s) tienen más de una migración que las crea.
+            Esto puede causar conflictos al correr migraciones. Elimina las versiones más viejas o redundantes.
+          </p>
+        </div>
+      </div>
+      <div class="divide-y divide-red-100">
+        @foreach($duplicados as $tabla => $archivos)
+          <div class="p-4">
+            <div class="flex items-center gap-2 mb-3">
+              <i class="ri-table-line text-slate-600"></i>
+              <code class="font-mono font-semibold text-slate-800">{{ $tabla }}</code>
+              <span class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700">{{ count($archivos) }} archivos</span>
+            </div>
+            <div class="space-y-2">
+              @foreach($archivos as $i => $a)
+                <div class="flex items-center gap-3 p-2 rounded-lg border border-slate-200 {{ $i === 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50' }}">
+                  <div class="flex-shrink-0">
+                    @if($i === 0)
+                      <span title="Más antigua — probablemente la canónica" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
+                        <i class="ri-check-line"></i> Canónica
+                      </span>
+                    @else
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold">
+                        <i class="ri-copy-2-line"></i> Duplicada
+                      </span>
+                    @endif
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="font-mono text-xs truncate" title="{{ $a['path'] }}">{{ $a['file'] }}</div>
+                    <div class="text-xs text-slate-500 flex items-center gap-2 flex-wrap mt-0.5">
+                      <span class="inline-flex items-center gap-1">
+                        <i class="ri-folder-line"></i>
+                        {{ $a['source'] === 'core' ? 'Core' : 'Plugin: ' . $a['source'] }}
+                      </span>
+                      <span>{{ date('Y-m-d H:i', $a['mtime']) }}</span>
+                      <span>{{ number_format($a['size'] / 1024, 1) }} KB</span>
+                      @if($a['ran'])
+                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700">
+                          <i class="ri-check-line"></i> Ya ejecutada
+                        </span>
+                      @else
+                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">pendiente</span>
+                      @endif
+                    </div>
+                  </div>
+                  <form method="post" action="admin/post_borrar_migracion" class="inline"
+                        onsubmit="return confirm('¿Eliminar la migración &quot;{{ $a['file'] }}&quot;?{{ $a['ran'] ? ' (También se quitará del tracking)' : '' }}');">
+                    @csrf
+                    <input type="hidden" name="path"   value="{{ $a['path'] }}">
+                    <input type="hidden" name="target" value="{{ $a['target'] }}">
+                    @if($a['ran'])<input type="hidden" name="force" value="1">@endif
+                    <button type="submit"
+                            class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-100 text-xs font-medium"
+                            title="Eliminar archivo{{ $a['ran'] ? ' + tracking' : '' }}">
+                      <i class="ri-delete-bin-line"></i> Eliminar
+                    </button>
+                  </form>
+                </div>
+              @endforeach
+            </div>
+          </div>
+        @endforeach
+      </div>
+    </div>
+  @endif
+
   {{-- ============ CORE ============ --}}
   <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
     <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
