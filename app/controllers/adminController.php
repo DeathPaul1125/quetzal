@@ -644,16 +644,188 @@ class adminController extends Controller implements ControllerInterface
         ];
       }
 
+      // Detectar migraciones duplicadas (mismo nombre de tabla en create_ migrations)
+      $duplicados = $this->findDuplicateMigrations();
+
       $this->setTitle('Migraciones');
       $this->addToData('coreStatus' , $coreStatus);
       $this->addToData('coreSummary', $coreSummary);
       $this->addToData('plugins'    , $plugins);
+      $this->addToData('duplicados' , $duplicados);
       $this->setView('migraciones');
       $this->render();
 
     } catch (Exception $e) {
       Flasher::error('Error al cargar migraciones: ' . $e->getMessage());
       Redirect::to('admin');
+    }
+  }
+
+  /**
+   * Busca migraciones que crean la misma tabla (duplicadas).
+   * Retorna array agrupado por tabla con todos los archivos que la crean.
+   *
+   * Shape: [ 'tabla_x' => [['path','file','source','target','mtime','ran','size']] ]
+   * 'source' es 'core' o el nombre del plugin.
+   */
+  private function findDuplicateMigrations(): array
+  {
+    $folders = [
+      ['source' => 'core',   'target' => 'core', 'dir' => ROOT . 'app' . DS . 'migrations'],
+    ];
+    if (class_exists('QuetzalPluginManager')) {
+      foreach (QuetzalPluginManager::getInstance()->listAll() as $plugin) {
+        $dir = ($plugin['path'] ?? '') . 'migrations';
+        if (is_dir($dir)) {
+          $folders[] = [
+            'source' => $plugin['name'],
+            'target' => $plugin['name'],
+            'dir'    => $dir,
+          ];
+        }
+      }
+    }
+
+    // Cuáles migraciones ya corrieron (por nombre sin extensión)
+    $ranByTarget = [];
+    try {
+      $pdo = $this->getPdo();
+      // Core
+      try {
+        $coreRan = $pdo->query('SELECT name FROM quetzal_migrations')->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        $ranByTarget['core'] = array_flip($coreRan);
+      } catch (Throwable $e) { $ranByTarget['core'] = []; }
+      // Plugins
+      foreach ($folders as $f) {
+        if ($f['target'] === 'core') continue;
+        $tbl = $this->pluginTrackingTable($f['target']);
+        try {
+          $ran = $pdo->query("SELECT name FROM `" . $tbl . "`")->fetchAll(PDO::FETCH_COLUMN) ?: [];
+          $ranByTarget[$f['target']] = array_flip($ran);
+        } catch (Throwable $e) { $ranByTarget[$f['target']] = []; }
+      }
+    } catch (Throwable $e) { /* sin BD */ }
+
+    $byTable = [];
+    foreach ($folders as $f) {
+      foreach (glob($f['dir'] . DS . '*.php') ?: [] as $filePath) {
+        $fileName = basename($filePath);
+        // Intentar extraer nombre de tabla de migraciones `create_X_table` o `add_..._to_X_table`
+        if (preg_match('/_create_([a-z0-9_]+)_table\.php$/', $fileName, $m)) {
+          $tabla = $m[1];
+          $tipo  = 'create';
+        } elseif (preg_match('/_add_[a-z0-9_]+_to_([a-z0-9_]+)_table\.php$/', $fileName, $m)) {
+          // Las ALTER ADD no se consideran duplicados entre sí, pero las listamos
+          continue;
+        } else {
+          continue;
+        }
+
+        $nameNoExt = preg_replace('/\.php$/', '', $fileName);
+        $byTable[$tabla][] = [
+          'path'    => $filePath,
+          'file'    => $fileName,
+          'source'  => $f['source'],
+          'target'  => $f['target'],
+          'dir'     => $f['dir'],
+          'mtime'   => @filemtime($filePath) ?: 0,
+          'size'    => @filesize($filePath) ?: 0,
+          'ran'     => isset($ranByTarget[$f['target']][$nameNoExt]),
+          'tipo'    => $tipo,
+        ];
+      }
+    }
+
+    // Solo retornar tablas con más de una migración
+    $dups = [];
+    foreach ($byTable as $tabla => $files) {
+      if (count($files) > 1) {
+        // Ordenar por mtime (la más antigua primero — generalmente es la "canónica")
+        usort($files, fn($a, $b) => $a['mtime'] <=> $b['mtime']);
+        $dups[$tabla] = $files;
+      }
+    }
+
+    return $dups;
+  }
+
+  /**
+   * Elimina el archivo de una migración. Requiere:
+   *   - path absoluto dentro de app/migrations/ o plugins/*/migrations/ (sandbox)
+   *   - Si la migración ya corrió, obliga flag force=1 (destruye tracking también)
+   */
+  function post_borrar_migracion()
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $path   = (string) ($_POST['path']   ?? '');
+      $target = sanitize_input($_POST['target'] ?? 'core');
+      $force  = !empty($_POST['force']);
+
+      if ($path === '') throw new Exception('Path requerido.');
+
+      // Sandbox: solo permitir borrado dentro de app/migrations o plugins/*/migrations
+      $real = realpath($path);
+      if ($real === false || !is_file($real)) {
+        throw new Exception('Archivo no existe: ' . $path);
+      }
+      $allowedRoots = [realpath(ROOT . 'app' . DS . 'migrations')];
+      if (class_exists('QuetzalPluginManager')) {
+        foreach (QuetzalPluginManager::getInstance()->listAll() as $plugin) {
+          $r = realpath(($plugin['path'] ?? '') . 'migrations');
+          if ($r) $allowedRoots[] = $r;
+        }
+      }
+      $inAllowed = false;
+      foreach ($allowedRoots as $root) {
+        if ($root && str_starts_with($real, $root)) { $inAllowed = true; break; }
+      }
+      if (!$inAllowed) {
+        throw new Exception('Path fuera de las carpetas permitidas.');
+      }
+
+      $fileName  = basename($real);
+      $nameNoExt = preg_replace('/\.php$/', '', $fileName);
+
+      // Si ya corrió, quitar también del tracking (salvo que el usuario lo pida explícito vía force)
+      $trackingTable = $target === 'core' ? 'quetzal_migrations' : $this->pluginTrackingTable($target);
+      $pdo = $this->getPdo();
+
+      $ran = false;
+      try {
+        $check = $pdo->prepare("SELECT COUNT(*) FROM `" . $trackingTable . "` WHERE name = :n");
+        $check->execute(['n' => $nameNoExt]);
+        $ran = (int) $check->fetchColumn() > 0;
+      } catch (Throwable $e) { /* tabla no existe aún */ }
+
+      if ($ran && !$force) {
+        throw new Exception(
+          'La migración "' . $fileName . '" ya fue ejecutada. Si la eliminas quedará un registro huérfano. ' .
+          'Marca "Forzar" para eliminarla también del tracking (' . $trackingTable . ').'
+        );
+      }
+
+      if ($ran && $force) {
+        try {
+          $del = $pdo->prepare("DELETE FROM `" . $trackingTable . "` WHERE name = :n");
+          $del->execute(['n' => $nameNoExt]);
+        } catch (Throwable $e) { /* silent */ }
+      }
+
+      if (!@unlink($real)) {
+        throw new Exception('No se pudo eliminar el archivo (revisa permisos).');
+      }
+
+      Flasher::success('Migración "' . $fileName . '" eliminada' . ($ran && $force ? ' (tracking también).' : '.'));
+      Redirect::to('admin/migraciones');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
     }
   }
 
