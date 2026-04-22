@@ -19,3 +19,5 @@ templates/views/pruebas/
 /plugins/DbManager/
 /plugins/ExportPro/
 /plugins/Facturador/
+/plugins/ClinicaDental/
+/plugins/Hospital/
