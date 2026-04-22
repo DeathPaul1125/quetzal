@@ -1,8 +1,12 @@
 composer.phar
 /vendor/
 vendor
-app/composer.lock
 .composer/
+
+# Nota: composer.lock SÍ se versiona — garantiza que todos instalen las
+# mismas versiones exactas de dependencias (`composer install` reproducible).
+# Sin lock file, composer hace `update` en cada clone y puede traer versiones
+# nuevas con bugs o cambios que rompan el sistema.
 
 app/config/config.php
 app/controllers/pruebasController.php
