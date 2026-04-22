@@ -188,12 +188,14 @@ class Migrator
         $out = [];
 
         foreach ($discovered as $name => $_) {
+            $path = $this->path . DIRECTORY_SEPARATOR . $name . '.php';
             if (isset($ranMap[$name])) {
                 $out[] = [
                     'name'        => $name,
                     'status'      => 'ran',
                     'batch'       => (int) $ranMap[$name]['batch'],
                     'executed_at' => $ranMap[$name]['executed_at'],
+                    'path'        => $path,
                 ];
             } else {
                 $out[] = [
@@ -201,6 +203,7 @@ class Migrator
                     'status'      => 'pending',
                     'batch'       => null,
                     'executed_at' => null,
+                    'path'        => $path,
                 ];
             }
         }
@@ -213,6 +216,7 @@ class Migrator
                     'status'      => 'missing',
                     'batch'       => (int) $r['batch'],
                     'executed_at' => $r['executed_at'],
+                    'path'        => null, // No hay archivo en disco
                 ];
             }
         }

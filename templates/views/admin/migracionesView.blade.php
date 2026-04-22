@@ -152,7 +152,7 @@
       </div>
     </div>
 
-    @include('includes.admin.migration_table', ['items' => $coreStatus])
+    @include('includes.admin.migration_table', ['items' => $coreStatus, 'target' => 'core'])
   </div>
 
   {{-- ============ PLUGINS ============ --}}
@@ -210,7 +210,7 @@
         </div>
       </div>
 
-      @include('includes.admin.migration_table', ['items' => $p['status']])
+      @include('includes.admin.migration_table', ['items' => $p['status'], 'target' => $p['name']])
     </div>
   @endforeach
 
