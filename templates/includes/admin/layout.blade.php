@@ -72,17 +72,45 @@
     .quetzal-pagination-wrapper { margin-top: 0 !important; }
   </style>
 
+  {{-- Si estamos dentro de un iframe, ocultar sidebar/topbar/footer vía CSS
+       y marcar <html class="is-framed"> lo antes posible para evitar flash de
+       layout completo. Esto mantiene el modo frame aún si el usuario navega
+       dentro del iframe y pierde el query param frame=1. --}}
+  <style>
+    html.is-framed #q-sidebar,
+    html.is-framed .q-topbar,
+    html.is-framed .q-footer,
+    html.is-framed [data-q-sidebar-toggle] { display: none !important; }
+    html.is-framed .q-main { padding: 1rem !important; }
+    html.is-framed body > div.min-h-screen { flex-direction: column !important; }
+  </style>
+  <script>
+    // Ejecutar síncrono antes del render para evitar flash
+    try { if (window.self !== window.top) { document.documentElement.classList.add('is-framed'); } } catch(e) {}
+  </script>
   @stack('head')
 </head>
 <body class="h-full bg-slate-50 text-slate-800 antialiased">
 
+@php
+  // Modo "frame": renderizar sin sidebar/topbar/footer. Útil para cargar
+  // páginas dentro de un iframe (ej. QuetzalOS desktop).
+  $frameMode = !empty($_GET['frame']) && $_GET['frame'] === '1';
+@endphp
+
+@if($frameMode)
+  <main class="p-4 sm:p-6">
+    @if(class_exists('Flasher')){!! Flasher::flash() !!}@endif
+    @yield('content')
+  </main>
+@else
 <div class="min-h-screen flex flex-col lg:flex-row">
   @include('includes.admin.sidebar', ['user' => $user, 'roleSlug' => $roleSlug])
 
   <div class="flex-1 flex flex-col min-w-0">
     @include('includes.admin.topbar', ['user' => $user])
 
-    <main class="flex-1 p-4 sm:p-6 lg:p-8">
+    <main class="q-main flex-1 p-4 sm:p-6 lg:p-8">
       {{-- Hook: plugins pueden inyectar banners/alertas globales aquí --}}
       @if(class_exists('QuetzalHookManager'))
         @foreach(QuetzalHookManager::getHookData('admin_before_content') as $html)
@@ -99,12 +127,13 @@
       @yield('content')
     </main>
 
-    <footer class="border-t border-slate-200 bg-white py-4 px-6 text-center text-xs text-slate-500">
+    <footer class="q-footer border-t border-slate-200 bg-white py-4 px-6 text-center text-xs text-slate-500">
       © {{ date('Y') }} {{ defined('SITE_NAME') ? SITE_NAME : 'Quetzal' }}
       · {{ defined('QUETZAL_NAME') ? QUETZAL_NAME : 'Quetzal' }} v{{ defined('QUETZAL_VERSION') ? QUETZAL_VERSION : '' }}
     </footer>
   </div>
 </div>
+@endif
 
 {{-- Objeto global Quetzal para JS (incluye CSRF token, URLs, etc.) --}}
 {!! function_exists('load_quetzal_obj') ? load_quetzal_obj() : '' !!}
