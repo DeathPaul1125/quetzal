@@ -1,0 +1,261 @@
+/* ============================================================
+ * q-data-table.css
+ * Sistema global de tablas mejoradas — diseño, buscador, filtros,
+ * paginación e items por página. Vanilla CSS (no depende de Tailwind).
+ *
+ * Uso básico:
+ *   <div class="q-dt-wrap" data-title="Mi tabla" data-icon="ri-table-line"
+ *        data-filters='[{"col":2,"label":"Estado"}]' data-per-page="10">
+ *     <table class="q-data-table">
+ *       <thead><tr><th>Col1</th><th>Col2</th><th data-filter="estado">Estado</th></tr></thead>
+ *       <tbody>...</tbody>
+ *     </table>
+ *   </div>
+ * ============================================================ */
+
+/* ------- Toolbar (controles sobre la tabla) ------- */
+.q-dt-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+  padding: .75rem .875rem;
+  border: 1px solid #e2e8f0;
+  border-bottom: 0;
+  border-radius: .75rem .75rem 0 0;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+.q-dt-toolbar .q-dt-title {
+  display: inline-flex; align-items: center; gap: .5rem;
+  font-weight: 600; color: #334155; font-size: .875rem;
+  margin-right: auto;
+}
+.q-dt-toolbar .q-dt-title i {
+  width: 1.75rem; height: 1.75rem; border-radius: .5rem;
+  background: rgba(2, 132, 199, .08); color: #0369a1;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 1rem;
+}
+.q-dt-toolbar .q-dt-count {
+  font-size: .75rem; color: #64748b; font-weight: 500;
+  background: #f1f5f9; padding: .15rem .5rem; border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Search + filtros */
+.q-dt-search {
+  position: relative;
+  display: inline-flex; align-items: center;
+  min-width: 220px; max-width: 360px; flex: 1 1 220px;
+}
+.q-dt-search i {
+  position: absolute; left: .625rem; color: #94a3b8; font-size: .95rem; pointer-events: none;
+}
+.q-dt-search input {
+  width: 100%;
+  padding: .4rem .75rem .4rem 2rem;
+  border: 1px solid #e2e8f0; border-radius: .5rem;
+  font-size: .8125rem; color: #334155; background: #fff;
+  transition: border-color .15s, box-shadow .15s;
+}
+.q-dt-search input:focus {
+  outline: 0;
+  border-color: var(--q-primary, #0ea5e9);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--q-primary, #0ea5e9) 18%, transparent);
+}
+.q-dt-search .q-dt-clear {
+  position: absolute; right: .4rem; width: 1.25rem; height: 1.25rem;
+  border-radius: 999px; border: 0; cursor: pointer;
+  background: #e2e8f0; color: #475569;
+  display: none; align-items: center; justify-content: center;
+  font-size: .65rem;
+}
+.q-dt-search .q-dt-clear:hover { background: #cbd5e1; }
+.q-dt-search.has-value .q-dt-clear { display: inline-flex; }
+
+.q-dt-filter {
+  position: relative;
+  display: inline-flex; align-items: center;
+}
+.q-dt-filter select {
+  appearance: none;
+  padding: .4rem 2rem .4rem .75rem;
+  border: 1px solid #e2e8f0; border-radius: .5rem;
+  background: #fff; color: #334155; font-size: .8125rem;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%2394a3b8' d='M5 6L0 0h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right .625rem center;
+}
+.q-dt-filter select:focus {
+  outline: 0;
+  border-color: var(--q-primary, #0ea5e9);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--q-primary, #0ea5e9) 18%, transparent);
+}
+.q-dt-filter.has-value select {
+  border-color: var(--q-primary, #0ea5e9);
+  background-color: color-mix(in srgb, var(--q-primary, #0ea5e9) 8%, #fff);
+}
+
+/* Contenedor de la tabla */
+.q-dt-box {
+  border: 1px solid #e2e8f0;
+  border-radius: 0;
+  background: #fff;
+  overflow: auto;
+}
+.q-dt-wrap:not(:has(.q-dt-toolbar)) .q-dt-box { border-radius: .75rem .75rem 0 0; }
+.q-dt-wrap:not(:has(.q-dt-footer))  .q-dt-box { border-radius: 0 0 .75rem .75rem; }
+.q-dt-wrap:not(:has(.q-dt-toolbar)):not(:has(.q-dt-footer)) .q-dt-box { border-radius: .75rem; }
+
+/* ------- Tabla ------- */
+table.q-data-table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  font-size: .8125rem;
+}
+table.q-data-table thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: #f8fafc;
+  text-align: left; font-weight: 600; color: #475569;
+  padding: .65rem .875rem;
+  border-bottom: 1px solid #e2e8f0;
+  text-transform: uppercase; letter-spacing: .02em; font-size: .6875rem;
+  user-select: none;
+}
+table.q-data-table thead th[data-sortable]:not([data-sortable="false"]) {
+  cursor: pointer;
+}
+table.q-data-table thead th[data-sortable]:not([data-sortable="false"]):hover {
+  background: #f1f5f9; color: #1e293b;
+}
+table.q-data-table thead th .q-dt-sort {
+  display: inline-block; margin-left: .35rem; font-size: .625rem;
+  color: #cbd5e1;
+  transition: color .15s;
+}
+table.q-data-table thead th.q-dt-sorted-asc .q-dt-sort,
+table.q-data-table thead th.q-dt-sorted-desc .q-dt-sort {
+  color: var(--q-primary, #0ea5e9);
+}
+table.q-data-table thead th.q-dt-sorted-asc  .q-dt-sort::before { content: "▲"; }
+table.q-data-table thead th.q-dt-sorted-desc .q-dt-sort::before { content: "▼"; }
+table.q-data-table thead th:not(.q-dt-sorted-asc):not(.q-dt-sorted-desc)[data-sortable]:not([data-sortable="false"]) .q-dt-sort::before { content: "⇅"; }
+
+table.q-data-table tbody td {
+  padding: .65rem .875rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155; vertical-align: middle;
+}
+table.q-data-table tbody tr:last-child td { border-bottom: 0; }
+table.q-data-table tbody tr:hover td { background: #f8fafc; }
+table.q-data-table tbody tr.q-dt-hidden { display: none; }
+
+/* Fila "sin resultados" */
+.q-dt-empty {
+  padding: 2rem 1rem; text-align: center; color: #94a3b8;
+}
+.q-dt-empty i {
+  display: block; font-size: 2.25rem; color: #cbd5e1; margin-bottom: .5rem;
+}
+.q-dt-empty .q-dt-empty-title {
+  font-weight: 600; color: #475569; margin-bottom: .15rem;
+}
+
+/* ------- Footer (paginación + per-page) ------- */
+.q-dt-footer {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: .75rem;
+  padding: .625rem .875rem;
+  border: 1px solid #e2e8f0; border-top: 0;
+  border-radius: 0 0 .75rem .75rem;
+  background: #f8fafc;
+  font-size: .75rem; color: #64748b;
+}
+.q-dt-footer .q-dt-info { margin-right: auto; }
+.q-dt-footer .q-dt-info b { color: #334155; font-weight: 600; }
+
+.q-dt-perpage {
+  display: inline-flex; align-items: center; gap: .35rem;
+}
+.q-dt-perpage select {
+  appearance: none;
+  padding: .25rem 1.5rem .25rem .5rem;
+  border: 1px solid #e2e8f0; border-radius: .375rem;
+  background: #fff; color: #334155; font-size: .75rem; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%2394a3b8' d='M5 6L0 0h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right .375rem center;
+}
+
+.q-dt-pager {
+  display: inline-flex; gap: .2rem; list-style: none; margin: 0; padding: 0;
+}
+.q-dt-pager button {
+  min-width: 1.85rem; height: 1.85rem; padding: 0 .45rem;
+  border: 1px solid #e2e8f0; background: #fff; color: #475569;
+  border-radius: .375rem; font-size: .75rem; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all .15s;
+  font-variant-numeric: tabular-nums;
+}
+.q-dt-pager button:hover:not(:disabled):not(.is-active) {
+  background: #f1f5f9; border-color: #cbd5e1;
+}
+.q-dt-pager button.is-active {
+  background: var(--q-primary, #0ea5e9); color: #fff;
+  border-color: var(--q-primary, #0ea5e9);
+}
+.q-dt-pager button:disabled {
+  opacity: .45; cursor: not-allowed;
+}
+
+/* ------- Chips visuales (badges) ------- */
+.q-chip {
+  display: inline-flex; align-items: center; gap: .25rem;
+  padding: .15rem .5rem; border-radius: 999px;
+  font-size: .6875rem; font-weight: 600; letter-spacing: .01em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.q-chip-green   { background:#dcfce7; color:#166534; }
+.q-chip-red     { background:#fee2e2; color:#991b1b; }
+.q-chip-amber   { background:#fef3c7; color:#92400e; }
+.q-chip-blue    { background:#dbeafe; color:#1e40af; }
+.q-chip-sky     { background:#e0f2fe; color:#075985; }
+.q-chip-violet  { background:#ede9fe; color:#5b21b6; }
+.q-chip-slate   { background:#f1f5f9; color:#475569; }
+.q-chip-rose    { background:#ffe4e6; color:#9f1239; }
+.q-chip-teal    { background:#ccfbf1; color:#115e59; }
+
+/* ------- Acciones ------- */
+.q-dt-actions {
+  display: inline-flex; gap: .25rem;
+}
+.q-dt-actions a, .q-dt-actions button {
+  width: 1.75rem; height: 1.75rem; border-radius: .375rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid #e2e8f0; background: #fff; color: #475569;
+  font-size: .8125rem; cursor: pointer; text-decoration: none;
+  transition: all .12s;
+}
+.q-dt-actions a:hover, .q-dt-actions button:hover {
+  background: #f1f5f9; color: #0f172a; border-color: #cbd5e1;
+}
+.q-dt-actions .q-dt-act-danger:hover {
+  background:#fee2e2; color:#991b1b; border-color:#fecaca;
+}
+.q-dt-actions .q-dt-act-primary:hover {
+  background: color-mix(in srgb, var(--q-primary, #0ea5e9) 10%, #fff);
+  color: var(--q-primary, #0ea5e9);
+  border-color: color-mix(in srgb, var(--q-primary, #0ea5e9) 40%, #fff);
+}
+
+/* Responsive: stack toolbar */
+@media (max-width: 640px) {
+  .q-dt-toolbar { align-items: stretch; }
+  .q-dt-toolbar .q-dt-title { flex: 1 1 100%; margin-right: 0; margin-bottom: .25rem; }
+  .q-dt-search { max-width: none; width: 100%; }
+  .q-dt-filter { flex: 1 1 auto; }
+  .q-dt-filter select { width: 100%; }
+  .q-dt-footer .q-dt-info { flex: 1 1 100%; text-align: center; }
+}

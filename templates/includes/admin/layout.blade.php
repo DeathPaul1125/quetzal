@@ -22,6 +22,10 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/preline@2.4.1/dist/preline.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.min.css">
 
+  {{-- Tablas mejoradas: búsqueda, filtros, paginación, items-por-página --}}
+  <link rel="stylesheet" href="assets/css/q-data-table.css?v=1">
+  <script src="assets/js/q-data-table.js?v=1" defer></script>
+
   <style>
     :root {
       --q-primary: {{ $colors['primary'] }};
