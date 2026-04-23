@@ -87,9 +87,9 @@
       </div>
     @else
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="bg-slate-50 border-b border-slate-200">
-            <tr class="text-xs uppercase tracking-wider text-slate-500">
+        <table class="q-table">
+          <thead>
+            <tr>
               <th class="text-left px-5 py-3 font-semibold">
                 <a href="{{ $sortUrl('id') }}" class="inline-flex items-center gap-1 hover:text-slate-800">
                   ID <i class="{{ $sortIcon('id') }}"></i>

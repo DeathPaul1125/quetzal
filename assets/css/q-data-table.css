@@ -108,12 +108,14 @@
 .q-dt-wrap:not(:has(.q-dt-footer))  .q-dt-box { border-radius: 0 0 .75rem .75rem; }
 .q-dt-wrap:not(:has(.q-dt-toolbar)):not(:has(.q-dt-footer)) .q-dt-box { border-radius: .75rem; }
 
-/* ------- Tabla ------- */
-table.q-data-table {
+/* ------- Tabla (.q-data-table para JS-enhanced, .q-table solo visual) ------- */
+table.q-data-table,
+table.q-table {
   width: 100%; border-collapse: separate; border-spacing: 0;
   font-size: .8125rem;
 }
-table.q-data-table thead th {
+table.q-data-table thead th,
+table.q-table      thead th {
   position: sticky; top: 0; z-index: 2;
   background: #f8fafc;
   text-align: left; font-weight: 600; color: #475569;
@@ -122,32 +124,43 @@ table.q-data-table thead th {
   text-transform: uppercase; letter-spacing: .02em; font-size: .6875rem;
   user-select: none;
 }
-table.q-data-table thead th[data-sortable]:not([data-sortable="false"]) {
+table.q-data-table thead th[data-sortable]:not([data-sortable="false"]),
+table.q-table      thead th[data-sortable]:not([data-sortable="false"]) {
   cursor: pointer;
 }
-table.q-data-table thead th[data-sortable]:not([data-sortable="false"]):hover {
+table.q-data-table thead th[data-sortable]:not([data-sortable="false"]):hover,
+table.q-table      thead th[data-sortable]:not([data-sortable="false"]):hover {
   background: #f1f5f9; color: #1e293b;
 }
-table.q-data-table thead th .q-dt-sort {
+table.q-data-table thead th .q-dt-sort,
+table.q-table      thead th .q-dt-sort {
   display: inline-block; margin-left: .35rem; font-size: .625rem;
   color: #cbd5e1;
   transition: color .15s;
 }
 table.q-data-table thead th.q-dt-sorted-asc .q-dt-sort,
-table.q-data-table thead th.q-dt-sorted-desc .q-dt-sort {
+table.q-data-table thead th.q-dt-sorted-desc .q-dt-sort,
+table.q-table      thead th.q-dt-sorted-asc .q-dt-sort,
+table.q-table      thead th.q-dt-sorted-desc .q-dt-sort {
   color: var(--q-primary, #0ea5e9);
 }
-table.q-data-table thead th.q-dt-sorted-asc  .q-dt-sort::before { content: "▲"; }
-table.q-data-table thead th.q-dt-sorted-desc .q-dt-sort::before { content: "▼"; }
-table.q-data-table thead th:not(.q-dt-sorted-asc):not(.q-dt-sorted-desc)[data-sortable]:not([data-sortable="false"]) .q-dt-sort::before { content: "⇅"; }
+table.q-data-table thead th.q-dt-sorted-asc  .q-dt-sort::before,
+table.q-table      thead th.q-dt-sorted-asc  .q-dt-sort::before { content: "▲"; }
+table.q-data-table thead th.q-dt-sorted-desc .q-dt-sort::before,
+table.q-table      thead th.q-dt-sorted-desc .q-dt-sort::before { content: "▼"; }
+table.q-data-table thead th:not(.q-dt-sorted-asc):not(.q-dt-sorted-desc)[data-sortable]:not([data-sortable="false"]) .q-dt-sort::before,
+table.q-table      thead th:not(.q-dt-sorted-asc):not(.q-dt-sorted-desc)[data-sortable]:not([data-sortable="false"]) .q-dt-sort::before { content: "⇅"; }
 
-table.q-data-table tbody td {
+table.q-data-table tbody td,
+table.q-table      tbody td {
   padding: .65rem .875rem;
   border-bottom: 1px solid #f1f5f9;
   color: #334155; vertical-align: middle;
 }
-table.q-data-table tbody tr:last-child td { border-bottom: 0; }
-table.q-data-table tbody tr:hover td { background: #f8fafc; }
+table.q-data-table tbody tr:last-child td,
+table.q-table      tbody tr:last-child td { border-bottom: 0; }
+table.q-data-table tbody tr:hover td,
+table.q-table      tbody tr:hover td { background: #f8fafc; }
 table.q-data-table tbody tr.q-dt-hidden { display: none; }
 
 /* Fila "sin resultados" */

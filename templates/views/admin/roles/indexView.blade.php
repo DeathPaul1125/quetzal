@@ -12,65 +12,39 @@
 <div class="space-y-4">
 
   {{-- Toolbar --}}
-  <div class="bg-white rounded-xl border border-slate-200 p-4">
-    <div class="flex items-center justify-between flex-wrap gap-3">
-      <div class="flex items-center gap-2">
-        <h2 class="font-semibold text-slate-800">Listado</h2>
-        <span class="inline-flex items-center justify-center min-w-[1.75rem] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">
-          {{ count($roles) }}
-        </span>
+  <div class="bg-gradient-to-br from-sky-500 to-indigo-700 text-white rounded-xl p-5 shadow-sm relative overflow-hidden">
+    <i class="ri-shield-user-fill" style="position:absolute;right:24px;top:50%;transform:translateY(-50%);font-size:96px;opacity:.15;"></i>
+    <div class="flex items-center justify-between gap-4 relative z-10">
+      <div>
+        <div class="text-xs uppercase tracking-widest opacity-80 font-semibold">Administración</div>
+        <h3 class="text-xl font-bold mt-0.5">Roles del sistema</h3>
+        <p class="text-xs opacity-90 mt-1">Gestión de roles y permisos. Los marcados como "sistema" no pueden eliminarse.</p>
       </div>
-      <a href="admin/crear_role" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg btn-primary text-sm font-semibold">
+      <a href="admin/crear_role" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white text-indigo-700 text-sm font-semibold hover:bg-indigo-50 transition-colors">
         <i class="ri-add-line"></i> Nuevo role
       </a>
     </div>
-
-    <form method="get" action="admin/roles" class="mt-4 grid grid-cols-1 sm:grid-cols-12 gap-3">
-      <div class="sm:col-span-9">
-        <div class="relative">
-          <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><i class="ri-search-line"></i></span>
-          <input type="text" name="q" value="{{ $f['q'] }}" placeholder="Buscar por nombre o slug..."
-                 class="w-full pl-10 pr-3 py-2 rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm">
-        </div>
-      </div>
-      <div class="sm:col-span-3 flex gap-2">
-        <button type="submit" class="flex-1 inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg btn-primary text-sm font-medium">
-          <i class="ri-filter-2-line"></i> Buscar
-        </button>
-        @if($f['q'] !== '')
-          <a href="admin/roles" class="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm" title="Limpiar">
-            <i class="ri-close-line"></i>
-          </a>
-        @endif
-      </div>
-    </form>
   </div>
 
   {{-- Tabla --}}
-  <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-    @if(empty($roles))
-      <div class="p-12 text-center">
-        <i class="ri-shield-user-line text-5xl text-slate-300 mb-2 block"></i>
-        <p class="text-sm text-slate-500">
-          @if($f['q'] !== '')
-            No hay roles que coincidan.
-          @else
-            No hay roles registrados.
-          @endif
-        </p>
-      </div>
-    @else
+  @if(empty($roles))
+    <div class="bg-white rounded-xl border border-slate-200 p-12 text-center">
+      <i class="ri-shield-user-line text-5xl text-slate-300 mb-2 block"></i>
+      <p class="text-sm text-slate-500">No hay roles registrados.</p>
+    </div>
+  @else
+    <div class="q-dt-wrap" data-title="Roles" data-icon="ri-shield-user-line" data-unit="roles">
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="bg-slate-50 border-b border-slate-200">
-            <tr class="text-xs uppercase tracking-wider text-slate-500">
-              <th class="text-left px-5 py-3 font-semibold">ID</th>
-              <th class="text-left px-5 py-3 font-semibold">Nombre</th>
-              <th class="text-left px-5 py-3 font-semibold">Slug</th>
-              <th class="text-center px-5 py-3 font-semibold">Permisos</th>
-              <th class="text-center px-5 py-3 font-semibold">Usuarios</th>
-              <th class="text-right px-5 py-3 font-semibold">Creado</th>
-              <th class="px-5 py-3 font-semibold w-12"></th>
+        <table class="q-data-table">
+          <thead>
+            <tr>
+              <th data-type="number">ID</th>
+              <th>Nombre</th>
+              <th>Slug</th>
+              <th data-type="number">Permisos</th>
+              <th data-type="number">Usuarios</th>
+              <th data-type="date">Creado</th>
+              <th data-sortable="false" style="width:1%;"></th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
@@ -130,7 +104,7 @@
           </tbody>
         </table>
       </div>
-    @endif
-  </div>
+    </div>
+  @endif
 </div>
 @endsection
