@@ -103,9 +103,12 @@
       unit:     getOpt(wrap, table, 'unit',  'registros'),
       search:   parseBool(getOpt(wrap, table, 'search', 'true'), true),
       sort:     parseBool(getOpt(wrap, table, 'sort',   'true'), true),
+      paginate: parseBool(getOpt(wrap, table, 'paginate', 'true'), true),
       perPage:  parseInt(getOpt(wrap, table, 'per-page', '10'), 10),
     };
     if (isNaN(cfg.perPage)) cfg.perPage = 10;
+    // Si paginate=false, no hay paginador ni per-page — mostrar todas
+    if (!cfg.paginate) cfg.perPage = 0;
 
     // Título inferido si no se especifica
     if (!cfg.title) {
@@ -211,21 +214,27 @@
     // ---- Footer (paginación + per-page) ----
     var footer = document.createElement('div');
     footer.className = 'q-dt-footer';
-    footer.innerHTML =
-      '<span class="q-dt-info"></span>' +
-      '<span class="q-dt-perpage"><span>Mostrar</span>' +
-      '<select>' + PER_PAGE_OPTIONS.map(function (n) {
-        return '<option value="' + n + '"' + (n === cfg.perPage ? ' selected' : '') + '>' +
-               (n === 0 ? 'Todos' : n) + '</option>';
-      }).join('') + '</select></span>' +
-      '<span class="q-dt-pager"></span>';
+    if (cfg.paginate) {
+      footer.innerHTML =
+        '<span class="q-dt-info"></span>' +
+        '<span class="q-dt-perpage"><span>Mostrar</span>' +
+        '<select>' + PER_PAGE_OPTIONS.map(function (n) {
+          return '<option value="' + n + '"' + (n === cfg.perPage ? ' selected' : '') + '>' +
+                 (n === 0 ? 'Todos' : n) + '</option>';
+        }).join('') + '</select></span>' +
+        '<span class="q-dt-pager"></span>';
+    } else {
+      footer.innerHTML = '<span class="q-dt-info"></span>';
+    }
     wrap.appendChild(footer);
 
     var perSel = footer.querySelector('.q-dt-perpage select');
-    perSel.addEventListener('change', function () {
-      state.perPage = parseInt(perSel.value, 10) || 0;
-      state.page = 1; apply();
-    });
+    if (perSel) {
+      perSel.addEventListener('change', function () {
+        state.perPage = parseInt(perSel.value, 10) || 0;
+        state.page = 1; apply();
+      });
+    }
 
     // Empty state row (se inserta cuando no hay matches)
     var emptyRow = document.createElement('tr');
@@ -341,6 +350,7 @@
 
     function renderPager(pages) {
       var pager = $('.q-dt-pager', footer);
+      if (!pager) return;
       pager.innerHTML = '';
       if (pages <= 1) return;
 
