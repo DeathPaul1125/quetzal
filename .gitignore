@@ -3,6 +3,10 @@ composer.phar
 vendor
 .composer/
 
+# Configuración local de Claude Code (no se versiona)
+.claude/*
+.claude/settings.json
+
 # Nota: composer.lock SÍ se versiona — garantiza que todos instalen las
 # mismas versiones exactas de dependencias (`composer install` reproducible).
 # Sin lock file, composer hace `update` en cada clone y puede traer versiones
@@ -17,13 +21,7 @@ templates/views/pruebas/
 # El wizard lo auto-elimina localmente tras instalar, pero debe estar en git
 # para que clones frescos puedan correrlo.
 
-# Plugin de desarrollo (no se versiona con el framework)
-/plugins/VisualCrudBuilder/
-/plugins/DashboardPlus/
-/plugins/DbManager/
-/plugins/ExportPro/
-/plugins/Facturador/
-/plugins/ClinicaDental/
-/plugins/Hospital/
-/plugins/QuetzalOS/
-/plugins/Notifier/
+# Plugins de desarrollo (no se versionan con el framework core).
+# Cada plugin se versiona en su propio repo / paquete.
+/plugins/*/
+!/plugins/.gitkeep

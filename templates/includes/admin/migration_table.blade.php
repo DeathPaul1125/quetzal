@@ -18,7 +18,7 @@
         </thead>
         <tbody>
           @foreach($items as $m)
-            <tr>
+            <tr data-row-status="{{ $m['status'] }}">
               <td><span class="font-mono text-xs text-slate-700 break-all">{{ $m['name'] }}</span></td>
               <td>
                 @if($m['status'] === 'ran')
@@ -36,9 +36,8 @@
                   <form method="post" action="admin/post_borrar_migracion" class="inline"
                         onsubmit="return confirm('¿Quitar la migración huérfana &quot;{{ $m['name'] }}&quot; del tracking?\n\nEsto NO revierte los cambios de esquema que pudo haber hecho; solo limpia el registro.');">
                     @csrf
-                    <input type="hidden" name="path" value="{{ $m['path'] ?? '' }}">
+                    <input type="hidden" name="name" value="{{ $m['name'] }}">
                     <input type="hidden" name="target" value="{{ $tgt }}">
-                    <input type="hidden" name="force" value="1">
                     <input type="hidden" name="missing" value="1">
                     <button type="submit" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-xs font-medium" title="Quitar del tracking">
                       <i class="ri-eraser-line"></i> Quitar

@@ -200,44 +200,57 @@
     @php
       $log = $_SESSION['plugin_rebuild_log'];
       unset($_SESSION['plugin_rebuild_log']);
-      $hasErr = ($log['summary']['validation_err'] ?? 0) + ($log['summary']['migration_err'] ?? 0) > 0;
+      $valErr = (int)($log['summary']['validation_err'] ?? 0);
+      $migErr = (int)($log['summary']['migration_err'] ?? 0);
+      $hasErr = ($valErr + $migErr) > 0;
     @endphp
-    <details class="bg-white rounded-xl border {{ $hasErr ? 'border-red-200' : 'border-emerald-200' }} overflow-hidden" open>
-      <summary class="cursor-pointer px-5 py-3 {{ $hasErr ? 'bg-red-50' : 'bg-emerald-50' }} flex items-center justify-between gap-2 list-none">
-        <div class="flex items-center gap-2 text-sm font-medium {{ $hasErr ? 'text-red-800' : 'text-emerald-800' }}">
-          <i class="{{ $hasErr ? 'ri-error-warning-line' : 'ri-checkbox-circle-line' }}"></i>
-          Log de la última reconstrucción ({{ count($log['steps']) }} pasos)
-        </div>
-        <i class="ri-arrow-down-s-line text-slate-500"></i>
-      </summary>
-      <ul class="divide-y divide-slate-100 text-sm">
-        @foreach($log['steps'] as $step)
-          @php
-            $icon = match($step['status']) {
-              'ok'      => 'ri-check-line text-emerald-600',
-              'error'   => 'ri-close-line text-red-600',
-              'partial' => 'ri-alert-line text-amber-600',
-              default   => 'ri-subtract-line text-slate-400',
-            };
-            $label = match($step['step']) {
-              'cache'    => 'Cache',
-              'validate' => 'Validación',
-              'migrate'  => 'Migración',
-              default    => ucfirst($step['step']),
-            };
-          @endphp
-          <li class="px-5 py-2.5 flex items-start gap-3">
-            <i class="{{ $icon }} mt-0.5"></i>
-            <div class="flex-1 min-w-0">
-              <div class="text-xs uppercase tracking-wider text-slate-400">
-                {{ $label }} @isset($step['plugin']) · <span class="font-mono">{{ $step['plugin'] }}</span>@endisset
+
+    @if($hasErr)
+      {{-- Sólo se abre automáticamente si hay errores --}}
+      <details class="bg-white rounded-xl border border-red-200 overflow-hidden" open>
+        <summary class="cursor-pointer px-4 py-2.5 bg-red-50 flex items-center justify-between gap-2 list-none hover:bg-red-100">
+          <div class="flex items-center gap-2 text-sm font-medium text-red-800">
+            <i class="ri-error-warning-fill"></i>
+            Se detectaron {{ $valErr + $migErr }} error(es) en la última reconstrucción
+            <span class="text-xs font-normal text-red-600">— click para ver detalle</span>
+          </div>
+          <i class="ri-arrow-down-s-line text-red-500"></i>
+        </summary>
+        <ul class="divide-y divide-slate-100 text-sm">
+          @foreach($log['steps'] as $step)
+            @php
+              $icon = match($step['status']) {
+                'ok'      => 'ri-check-line text-emerald-600',
+                'error'   => 'ri-close-line text-red-600',
+                'partial' => 'ri-alert-line text-amber-600',
+                default   => 'ri-subtract-line text-slate-400',
+              };
+              $label = match($step['step']) {
+                'cache'    => 'Cache',
+                'validate' => 'Validación',
+                'migrate'  => 'Migración',
+                default    => ucfirst($step['step']),
+              };
+            @endphp
+            <li class="px-5 py-2.5 flex items-start gap-3">
+              <i class="{{ $icon }} mt-0.5"></i>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs uppercase tracking-wider text-slate-400">
+                  {{ $label }} @isset($step['plugin']) · <span class="font-mono">{{ $step['plugin'] }}</span>@endisset
+                </div>
+                <div class="text-slate-700 text-sm">{{ $step['message'] }}</div>
               </div>
-              <div class="text-slate-700 text-sm">{{ $step['message'] }}</div>
-            </div>
-          </li>
-        @endforeach
-      </ul>
-    </details>
+            </li>
+          @endforeach
+        </ul>
+      </details>
+    @else
+      {{-- Banner compacto de éxito, sin acordeón desplegado --}}
+      <div class="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2 flex items-center gap-2 text-sm text-emerald-800">
+        <i class="ri-checkbox-circle-fill text-emerald-600"></i>
+        <span>Reconstrucción completada sin errores ({{ count($log['steps']) }} pasos).</span>
+      </div>
+    @endif
   @endif
 
   {{-- Resumen --}}
@@ -271,22 +284,22 @@
     </div>
   </div>
 
-  <div class="rounded-xl border border-sky-200 bg-sky-50 text-sky-900 p-4 text-sm">
-    <div class="flex items-start gap-2">
-      <i class="ri-information-line text-lg mt-0.5"></i>
-      <div>
-        <p>
-          Los plugins viven en <code class="bg-sky-100 px-1 rounded">/plugins/&lt;Nombre&gt;/</code> y se descubren automáticamente.
-          <strong>Todo plugin nuevo queda habilitado por default</strong> — no necesitas editar <code class="bg-sky-100 px-1 rounded">plugins.json</code>.
-          El archivo solo guarda los plugins que hayas deshabilitado explícitamente.
-        </p>
-        <p class="mt-1 text-xs">
-          Tras agregar un plugin nuevo, corre <strong>Reconstruir plugins</strong> para limpiar cache y ejecutar sus migraciones.
-          Gestiona migraciones desde <a href="admin/migraciones" class="text-sky-700 font-medium hover:underline">Migraciones</a>.
-        </p>
+  {{-- ============ BUSCADOR + FILTROS ============ --}}
+  @if(!empty($plugins))
+    <div class="bg-white rounded-xl border border-slate-200 p-3 flex items-center gap-2 flex-wrap" id="plugin-search-bar">
+      <div class="relative flex-1 min-w-[220px]">
+        <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+        <input type="search" id="plugin-search-input" placeholder="Buscar por nombre, autor o descripción..."
+               class="w-full pl-10 pr-3 py-2 rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm">
       </div>
+      <select id="plugin-filter-status" class="rounded-lg border-slate-300 text-sm py-2">
+        <option value="">Todos</option>
+        <option value="enabled">Activos</option>
+        <option value="disabled">Deshabilitados</option>
+      </select>
+      <span id="plugin-count-info" class="text-xs text-slate-500 font-mono"></span>
     </div>
-  </div>
+  @endif
 
   {{-- ============ LISTA DE PLUGINS ============ --}}
   @if(empty($plugins))
@@ -297,123 +310,220 @@
       </p>
     </div>
   @else
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    @php
+      // Mapa name → estado enabled para todos los plugins
+      $enabledMap = [];
+      foreach ($plugins as $pp) { $enabledMap[$pp['name']] = !empty($pp['enabled']); }
+      $existsMap = [];
+      foreach ($plugins as $pp) { $existsMap[$pp['name']] = true; }
+    @endphp
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" id="plugin-grid">
       @foreach($plugins as $p)
         @php
           $isInstalled = !empty($p['installed']);
           $isEnabled   = !empty($p['enabled']);
           $requires    = $p['requires'] ?? [];
+          $searchBlob  = strtolower(trim(($p['name'] ?? '') . ' ' . ($p['author'] ?? '') . ' ' . ($p['description'] ?? '')));
+
+          // Detectar dependencias faltantes (no existen o no están habilitadas)
+          $faltantes = [];
+          foreach ($requires as $dep) {
+            if (empty($existsMap[$dep])) {
+              $faltantes[$dep] = 'missing';     // no existe en disco
+            } elseif (empty($enabledMap[$dep])) {
+              $faltantes[$dep] = 'disabled';    // existe pero no habilitado
+            }
+          }
+          $tieneFaltantes = !empty($faltantes);
         @endphp
-        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div class="p-5">
-            <div class="flex items-start justify-between gap-3 mb-3">
-              <div class="flex items-start gap-3 min-w-0">
-                <div class="w-11 h-11 rounded-lg flex-shrink-0 flex items-center justify-center
-                            {{ $isEnabled ? 'bg-emerald-50 text-emerald-600' : ($isInstalled ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-400') }}">
-                  <i class="ri-plug-line text-xl"></i>
-                </div>
-                <div class="min-w-0">
-                  <h3 class="font-semibold text-slate-800 truncate">
-                    {{ $p['name'] }}
-                    <span class="text-xs font-normal text-slate-400 ml-1">v{{ $p['version'] ?? '?' }}</span>
-                  </h3>
-                  @if(!empty($p['author']))
-                    <div class="text-xs text-slate-500">por {{ $p['author'] }}</div>
-                  @endif
-                </div>
-              </div>
-
-              {{-- Status badge --}}
-              <div class="flex-shrink-0">
+        <div class="plugin-card bg-white rounded-lg border border-slate-200 hover:border-slate-300 hover:shadow-sm transition p-3 flex flex-col"
+             data-search="{{ $searchBlob }}"
+             data-status="{{ $isEnabled ? 'enabled' : 'disabled' }}">
+          {{-- Header: icon + name + status --}}
+          <div class="flex items-start gap-2 mb-2">
+            <div class="w-8 h-8 rounded-md flex-shrink-0 flex items-center justify-center
+                        {{ $isEnabled ? 'bg-emerald-50 text-emerald-600' : ($isInstalled ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-400') }}">
+              <i class="ri-plug-line text-sm"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1">
+                <h3 class="font-semibold text-slate-800 text-sm truncate">{{ $p['name'] }}</h3>
                 @if($isEnabled)
-                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
-                    <i class="ri-check-line"></i> activo
-                  </span>
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" title="Activo"></span>
                 @else
-                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-medium">
-                    <i class="ri-pause-line"></i> deshabilitado
-                  </span>
+                  <span class="w-1.5 h-1.5 rounded-full bg-slate-300 flex-shrink-0" title="Deshabilitado"></span>
                 @endif
               </div>
+              <div class="text-[10px] text-slate-400">v{{ $p['version'] ?? '?' }}@if(!empty($p['author'])) · {{ $p['author'] }}@endif</div>
             </div>
+          </div>
 
-            {{-- Description --}}
-            @if(!empty($p['description']))
-              <p class="text-sm text-slate-600 mb-3 leading-relaxed">{{ $p['description'] }}</p>
-            @endif
+          {{-- Description --}}
+          @if(!empty($p['description']))
+            <p class="text-xs text-slate-600 line-clamp-2 mb-2" title="{{ $p['description'] }}">{{ $p['description'] }}</p>
+          @endif
 
-            {{-- Metadata --}}
-            <div class="flex items-center gap-3 flex-wrap text-xs text-slate-500 mb-4">
-              @if(!empty($p['min_php']))
-                <span class="inline-flex items-center gap-1" title="PHP mínimo requerido">
-                  <i class="ri-code-s-slash-line"></i> PHP ≥ {{ $p['min_php'] }}
+          {{-- Dependencies (solo si hay) --}}
+          @if(!empty($requires))
+            <div class="flex flex-wrap gap-1 mb-2">
+              @foreach($requires as $dep)
+                @php
+                  $depState = $faltantes[$dep] ?? 'ok';
+                  $cls = match($depState) {
+                    'missing'  => 'bg-red-50 text-red-700 border border-red-200',
+                    'disabled' => 'bg-amber-50 text-amber-700 border border-amber-200',
+                    default    => 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+                  };
+                  $ico = match($depState) {
+                    'missing'  => 'ri-error-warning-line',
+                    'disabled' => 'ri-pause-circle-line',
+                    default    => 'ri-check-line',
+                  };
+                  $ttl = match($depState) {
+                    'missing'  => 'Este plugin no está instalado',
+                    'disabled' => 'Este plugin existe pero está deshabilitado',
+                    default    => 'Habilitado',
+                  };
+                @endphp
+                <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] {{ $cls }}" title="Requiere {{ $dep }} — {{ $ttl }}">
+                  <i class="{{ $ico }} text-[9px]"></i>{{ $dep }}
                 </span>
-              @endif
-              @if(!empty($p['min_quetzal_version']))
-                <span class="inline-flex items-center gap-1" title="Quetzal mínimo requerido">
-                  <i class="ri-quill-pen-line"></i> Quetzal ≥ {{ $p['min_quetzal_version'] }}
-                </span>
-              @endif
-              <span class="inline-flex items-center gap-1" title="Orden de carga">
-                <i class="ri-sort-asc"></i> orden #{{ $p['order'] ?? 0 }}
-              </span>
+              @endforeach
             </div>
+          @endif
 
-            {{-- Dependencies --}}
-            @if(!empty($requires))
-              <div class="mb-4 pb-4 border-b border-slate-100">
-                <div class="text-xs uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Requiere</div>
-                <div class="flex flex-wrap gap-1">
-                  @foreach($requires as $dep)
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-xs text-slate-600">
-                      <i class="ri-link"></i> {{ $dep }}
-                    </span>
-                  @endforeach
-                </div>
+          {{-- Banner de faltantes con botón "Activar en cascada" --}}
+          @if(!$isEnabled && $tieneFaltantes)
+            <div class="mb-2 p-2 rounded bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
+              <div class="flex items-start gap-1 mb-1">
+                <i class="ri-information-line mt-0.5"></i>
+                <span>Activá primero: <strong>{{ implode(', ', array_keys($faltantes)) }}</strong></span>
               </div>
-            @endif
-
-            {{-- Actions --}}
-            <div class="flex items-center justify-between flex-wrap gap-2">
-              <div class="flex items-center gap-2 flex-wrap">
-                @if($isEnabled)
-                  <form method="post" action="admin/post_plugin_disable" class="inline">
-                    @csrf
-                    <input type="hidden" name="name" value="{{ $p['name'] }}">
-                    <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium">
-                      <i class="ri-pause-circle-line"></i> Deshabilitar
-                    </button>
-                  </form>
-                @else
-                  <form method="post" action="admin/post_plugin_enable" class="inline">
-                    @csrf
-                    <input type="hidden" name="name" value="{{ $p['name'] }}">
-                    <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg btn-primary text-sm font-semibold">
-                      <i class="ri-play-circle-line"></i> Habilitar
-                    </button>
-                  </form>
-                @endif
-
-                <form method="post" action="admin/post_plugin_delete" class="inline"
-                      onsubmit="return confirm('¿ELIMINAR el plugin &quot;{{ $p['name'] }}&quot; del disco?\n\nEsta acción borra todos los archivos de plugins/{{ $p['name'] }}/ y es IRREVERSIBLE.\n\nLas tablas de BD creadas por sus migraciones NO se eliminan automáticamente — hazlo desde Migraciones si lo deseas.');">
+              @php
+                $puedeCascada = !in_array('missing', $faltantes, true);
+              @endphp
+              @if($puedeCascada)
+                <form method="post" action="admin/post_plugin_enable" class="inline"
+                      onsubmit="return confirm('¿Activar en cascada?\n\nSe habilitarán primero: {{ implode(', ', array_keys($faltantes)) }}\n\nLuego se habilitará {{ $p['name'] }}.');">
                   @csrf
                   <input type="hidden" name="name" value="{{ $p['name'] }}">
-                  <button type="submit"
-                          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium"
-                          title="Eliminar el plugin del disco (irreversible)">
-                    <i class="ri-delete-bin-line"></i> Eliminar
+                  <input type="hidden" name="cascade" value="1">
+                  <button type="submit" class="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-semibold">
+                    <i class="ri-play-circle-line"></i> Activar en cascada
                   </button>
                 </form>
-              </div>
-
-              <a href="admin/migraciones" class="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-primary">
-                <i class="ri-database-2-line"></i> Migraciones
-              </a>
+              @endif
             </div>
+          @endif
+
+          {{-- Actions (compactas, al final, con icon-only) --}}
+          <div class="flex items-center gap-1 mt-auto pt-2 border-t border-slate-100">
+            @if($isEnabled)
+              <form method="post" action="admin/post_plugin_disable" class="inline">
+                @csrf
+                <input type="hidden" name="name" value="{{ $p['name'] }}">
+                <button type="submit" class="inline-flex items-center gap-1 px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs" title="Deshabilitar">
+                  <i class="ri-pause-circle-line"></i> Deshabilitar
+                </button>
+              </form>
+            @else
+              <form method="post" action="admin/post_plugin_enable" class="inline">
+                @csrf
+                <input type="hidden" name="name" value="{{ $p['name'] }}">
+                @if($tieneFaltantes)
+                  <button type="button" disabled
+                          class="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 text-slate-400 text-xs font-semibold cursor-not-allowed"
+                          title="Activá primero los plugins requeridos">
+                    <i class="ri-lock-line"></i> Habilitar
+                  </button>
+                @else
+                  <button type="submit" class="inline-flex items-center gap-1 px-2 py-1 rounded btn-primary text-xs font-semibold" title="Habilitar">
+                    <i class="ri-play-circle-line"></i> Habilitar
+                  </button>
+                @endif
+              </form>
+            @endif
+
+            <a href="admin/migraciones" class="inline-flex items-center justify-center w-7 h-7 rounded border border-slate-200 text-slate-500 hover:bg-slate-50" title="Migraciones">
+              <i class="ri-database-2-line text-xs"></i>
+            </a>
+
+            <form method="post" action="admin/post_plugin_delete" class="inline ml-auto"
+                  onsubmit="return confirm('¿ELIMINAR el plugin &quot;{{ $p['name'] }}&quot; del disco?\n\nEsta acción borra todos los archivos de plugins/{{ $p['name'] }}/ y es IRREVERSIBLE.\n\nLas tablas de BD creadas por sus migraciones NO se eliminan automáticamente — hazlo desde Migraciones si lo deseas.');">
+              @csrf
+              <input type="hidden" name="name" value="{{ $p['name'] }}">
+              <button type="submit" class="inline-flex items-center justify-center w-7 h-7 rounded border border-red-200 text-red-500 hover:bg-red-50" title="Eliminar del disco">
+                <i class="ri-delete-bin-line text-xs"></i>
+              </button>
+            </form>
           </div>
         </div>
       @endforeach
     </div>
   @endif
+
+  {{-- Empty state del buscador (oculto por default) --}}
+  <div id="plugin-empty-results" class="hidden bg-white rounded-xl border border-slate-200 p-8 text-center">
+    <i class="ri-search-eye-line text-4xl text-slate-300 mb-2 block"></i>
+    <p class="text-sm text-slate-500">Sin plugins que coincidan con tu búsqueda.</p>
+    <button type="button" id="plugin-search-clear" class="mt-3 text-xs text-primary hover:underline">
+      <i class="ri-close-line"></i> Limpiar filtros
+    </button>
+  </div>
 </div>
+
+@push('scripts')
+<script>
+(function () {
+  const $search = document.getElementById('plugin-search-input');
+  const $filter = document.getElementById('plugin-filter-status');
+  const $grid   = document.getElementById('plugin-grid');
+  const $empty  = document.getElementById('plugin-empty-results');
+  const $info   = document.getElementById('plugin-count-info');
+  const $clear  = document.getElementById('plugin-search-clear');
+  if (!$grid) return;
+
+  const cards = Array.from($grid.querySelectorAll('.plugin-card'));
+  const total = cards.length;
+
+  function norm(s) {
+    return (s || '').toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+
+  function apply() {
+    const q = norm($search?.value || '');
+    const st = $filter?.value || '';
+    let visible = 0;
+    cards.forEach(c => {
+      const hay  = norm(c.dataset.search || '');
+      const okQ  = !q || hay.includes(q);
+      const okS  = !st || c.dataset.status === st;
+      const show = okQ && okS;
+      c.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    if ($empty) $empty.classList.toggle('hidden', visible !== 0);
+    if ($grid)  $grid.style.display = visible === 0 ? 'none' : '';
+    if ($info)  $info.textContent = (q || st) ? (visible + ' / ' + total) : (total + ' plugin' + (total === 1 ? '' : 's'));
+  }
+
+  $search?.addEventListener('input', apply);
+  $filter?.addEventListener('change', apply);
+  $clear?.addEventListener('click', () => {
+    if ($search) $search.value = '';
+    if ($filter) $filter.value = '';
+    apply();
+    $search?.focus();
+  });
+
+  // ESC en el buscador = limpiar
+  $search?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && $search.value) { $search.value = ''; apply(); }
+  });
+
+  apply();
+})();
+</script>
+@endpush
 @endsection

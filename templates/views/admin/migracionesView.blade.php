@@ -10,21 +10,34 @@
 @endphp
 
 @section('content')
-<div class="space-y-6">
+@php
+  // Resumen global de pendientes / huérfanas a través de core + plugins
+  $gPending  = (int) ($coreSummary['pending'] ?? 0);
+  $gMissing  = (int) ($coreSummary['missing'] ?? 0);
+  $gTotal    = (int) ($coreSummary['total'] ?? 0);
+  foreach (($plugins ?? []) as $p) {
+    $gPending += (int) ($p['summary']['pending'] ?? 0);
+    $gMissing += (int) ($p['summary']['missing'] ?? 0);
+    $gTotal   += (int) ($p['summary']['total'] ?? 0);
+  }
+@endphp
+<div class="space-y-4" id="mig-root">
 
-  <div class="rounded-xl border border-sky-200 bg-sky-50 text-sky-900 p-4 text-sm">
-    <div class="flex items-start gap-2">
-      <i class="ri-information-line text-lg mt-0.5"></i>
-      <div>
-        <div class="font-medium">Panel de migraciones</div>
-        <p class="text-sky-800/80 mt-1">
-          Quetzal lleva control de qué migraciones se ejecutaron usando una tabla dedicada
-          (<code class="bg-sky-100 px-1 rounded">quetzal_migrations</code> para el core,
-          <code class="bg-sky-100 px-1 rounded">plugin_&lt;nombre&gt;_migrations</code> para cada plugin).
-          Solo se ejecutan las migraciones que aún no están registradas en esa tabla, igual que Laravel.
-        </p>
-      </div>
-    </div>
+  {{-- Filtros rápidos --}}
+  <div class="bg-white rounded-xl border border-slate-200 p-3 flex items-center gap-2 flex-wrap">
+    <span class="text-xs font-semibold uppercase text-slate-500 mr-1">Filtro:</span>
+    <button type="button" data-mig-filter="all" class="mig-chip is-active inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-medium">
+      <i class="ri-list-check"></i> Todas <span class="text-slate-400 font-mono ml-1">{{ $gTotal }}</span>
+    </button>
+    <button type="button" data-mig-filter="pending" class="mig-chip inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50 text-xs font-medium">
+      <i class="ri-time-line"></i> Solo pendientes <span class="font-mono ml-1">{{ $gPending }}</span>
+    </button>
+    <button type="button" data-mig-filter="missing" class="mig-chip inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 text-xs font-medium {{ $gMissing === 0 ? 'opacity-40 cursor-not-allowed' : '' }}" @if($gMissing===0) disabled @endif>
+      <i class="ri-error-warning-line"></i> Solo huérfanas <span class="font-mono ml-1">{{ $gMissing }}</span>
+    </button>
+    <span class="ml-auto text-xs text-slate-400">
+      @if($gPending > 0)<i class="ri-alert-line text-amber-500"></i> Hay migraciones pendientes por ejecutar.@endif
+    </span>
   </div>
 
   {{-- ============ DUPLICADOS ============ --}}
@@ -101,8 +114,47 @@
     </div>
   @endif
 
+  {{-- ============ TABLAS DE TRACKING HUÉRFANAS (plugins borrados) ============ --}}
+  @if(!empty($trackingHuerfano))
+    <div class="bg-white rounded-xl border-2 border-amber-300 overflow-hidden">
+      <div class="px-5 py-3 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
+        <i class="ri-delete-bin-2-fill text-amber-600 text-xl"></i>
+        <div class="flex-1">
+          <h3 class="font-semibold text-amber-900">Tablas de tracking de plugins borrados</h3>
+          <p class="text-xs text-amber-700">
+            {{ count($trackingHuerfano) }} plugin(s) dejaron su tabla <code class="bg-amber-100 px-1 rounded">plugin_&lt;nombre&gt;_migrations</code> en la BD aunque ya no existen en <code class="bg-amber-100 px-1 rounded">/plugins/</code>.
+            Podés dropearlas. Esto NO elimina las tablas de datos del plugin (ej: <code>proyectos_X</code>), solo el tracking.
+          </p>
+        </div>
+      </div>
+      <div class="divide-y divide-amber-100">
+        @foreach($trackingHuerfano as $th)
+          <div class="px-5 py-3 flex items-center gap-3 flex-wrap">
+            <div class="flex-1 min-w-0">
+              <div class="font-mono text-sm text-slate-800">{{ $th['table'] }}</div>
+              <div class="text-xs text-slate-500">
+                Plugin: <strong>{{ $th['plugin'] }}</strong> · {{ $th['count'] }} registro(s) de tracking
+              </div>
+            </div>
+            <form method="post" action="admin/post_dropear_tracking_huerfano"
+                  onsubmit="return confirm('¿DROPEAR la tabla {{ $th['table'] }}?\n\nEsto elimina el tracking del plugin &quot;{{ $th['plugin'] }}&quot; pero NO borra sus tablas de datos.\n\nIrreversible.');">
+              @csrf
+              <input type="hidden" name="table" value="{{ $th['table'] }}">
+              <button type="submit" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-xs font-medium">
+                <i class="ri-delete-bin-line"></i> DROP {{ $th['table'] }}
+              </button>
+            </form>
+          </div>
+        @endforeach
+      </div>
+    </div>
+  @endif
+
   {{-- ============ CORE ============ --}}
-  <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+  <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mig-target-card"
+       data-mig-target="core"
+       data-has-pending="{{ (int)$coreSummary['pending'] > 0 ? 1 : 0 }}"
+       data-has-missing="{{ (int)($coreSummary['missing'] ?? 0) > 0 ? 1 : 0 }}">
     <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -128,13 +180,23 @@
         </div>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 flex-wrap">
         @if($coreSummary['pending'] > 0)
           <form method="post" action="admin/post_migrate" class="inline">
             @csrf
             <input type="hidden" name="target" value="core">
             <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg btn-primary text-sm font-semibold">
               <i class="ri-play-line"></i> Ejecutar {{ $coreSummary['pending'] }} pendiente(s)
+            </button>
+          </form>
+        @endif
+        @if(!empty($coreSummary['missing']) && $coreSummary['missing'] > 0)
+          <form method="post" action="admin/post_limpiar_huerfanas" class="inline"
+                onsubmit="return confirm('¿Quitar del tracking las {{ $coreSummary['missing'] }} migración(es) huérfana(s) del core?\n\nEsto NO revierte los cambios de esquema ya aplicados; solo limpia el registro en quetzal_migrations.');">
+            @csrf
+            <input type="hidden" name="target" value="core">
+            <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium">
+              <i class="ri-eraser-line"></i> Limpiar {{ $coreSummary['missing'] }} huérfana(s)
             </button>
           </form>
         @endif
@@ -157,7 +219,10 @@
 
   {{-- ============ PLUGINS ============ --}}
   @foreach($plugins as $p)
-    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mig-target-card"
+         data-mig-target="{{ $p['name'] }}"
+         data-has-pending="{{ (int)$p['summary']['pending'] > 0 ? 1 : 0 }}"
+         data-has-missing="{{ (int)($p['summary']['missing'] ?? 0) > 0 ? 1 : 0 }}">
       <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
@@ -186,13 +251,23 @@
           </div>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           @if($p['summary']['pending'] > 0)
             <form method="post" action="admin/post_migrate" class="inline">
               @csrf
               <input type="hidden" name="target" value="{{ $p['name'] }}">
               <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg btn-primary text-sm font-semibold">
                 <i class="ri-play-line"></i> Ejecutar {{ $p['summary']['pending'] }} pendiente(s)
+              </button>
+            </form>
+          @endif
+          @if(!empty($p['summary']['missing']) && $p['summary']['missing'] > 0)
+            <form method="post" action="admin/post_limpiar_huerfanas" class="inline"
+                  onsubmit="return confirm('¿Quitar del tracking las {{ $p['summary']['missing'] }} migración(es) huérfana(s) de {{ $p['name'] }}?\n\nEsto NO revierte los cambios de esquema ya aplicados; solo limpia el registro.');">
+              @csrf
+              <input type="hidden" name="target" value="{{ $p['name'] }}">
+              <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium">
+                <i class="ri-eraser-line"></i> Limpiar {{ $p['summary']['missing'] }} huérfana(s)
               </button>
             </form>
           @endif
@@ -221,4 +296,60 @@
     </div>
   @endif
 </div>
+
+@push('head')
+<style>
+  .mig-chip.is-active {
+    background: var(--q-primary, #0078d4);
+    color: #fff;
+    border-color: var(--q-primary, #0078d4);
+  }
+  .mig-chip.is-active .font-mono,
+  .mig-chip.is-active .text-slate-400 { color: rgba(255,255,255,.85) !important; }
+</style>
+@endpush
+
+@push('scripts')
+<script>
+(function () {
+  const chips = document.querySelectorAll('[data-mig-filter]');
+  const cards = document.querySelectorAll('.mig-target-card');
+  if (!chips.length || !cards.length) return;
+
+  let mode = 'all';
+
+  function apply() {
+    cards.forEach(card => {
+      const hasPending = card.dataset.hasPending === '1';
+      const hasMissing = card.dataset.hasMissing === '1';
+
+      // Mostrar/ocultar card completa según si aplica al filtro
+      let showCard = true;
+      if (mode === 'pending') showCard = hasPending;
+      else if (mode === 'missing') showCard = hasMissing;
+      card.style.display = showCard ? '' : 'none';
+      if (!showCard) return;
+
+      // Filtrar filas dentro de la tabla
+      card.querySelectorAll('tbody tr[data-row-status]').forEach(tr => {
+        const st = tr.dataset.rowStatus;
+        let showRow = true;
+        if (mode === 'pending') showRow = (st === 'pending');
+        else if (mode === 'missing') showRow = (st === 'missing');
+        tr.style.display = showRow ? '' : 'none';
+      });
+    });
+  }
+
+  chips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      if (chip.disabled) return;
+      mode = chip.dataset.migFilter;
+      chips.forEach(c => c.classList.toggle('is-active', c === chip));
+      apply();
+    });
+  });
+})();
+</script>
+@endpush
 @endsection

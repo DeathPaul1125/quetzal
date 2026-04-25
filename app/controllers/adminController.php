@@ -280,10 +280,62 @@ class adminController extends Controller implements ControllerInterface
 
   function post_plugin_enable()
   {
+    // Si viene cascade=1, activar primero dependencias requeridas que existen
+    // pero están deshabilitadas. Plugins no instalados en disco se reportan
+    // como error claro.
+    $cascade = !empty($_POST['cascade']);
+
     $this->handlePluginAction(
-      fn($mgr, $name) => $mgr->enable($name),
+      function ($mgr, $name) use ($cascade) {
+        if ($cascade) {
+          $activados = $this->enableWithDependencies($mgr, $name);
+          if (!empty($activados)) {
+            Flasher::new(
+              'Se activaron en cascada: <b>' . implode('</b>, <b>', $activados) . '</b>',
+              'info'
+            );
+          }
+        }
+        $mgr->enable($name);
+      },
       'Plugin <b>%s</b> habilitado.'
     );
+  }
+
+  /**
+   * Activa recursivamente las dependencias de un plugin.
+   * Retorna la lista de plugins activados en cascada (no incluye $name).
+   * Lanza Exception si alguna dependencia no existe en disco.
+   */
+  private function enableWithDependencies($mgr, string $name, array &$activados = [], array &$visitando = []): array
+  {
+    // Evitar ciclos
+    if (isset($visitando[$name])) return $activados;
+    $visitando[$name] = true;
+
+    $discovered = $mgr->discover();
+    $manifest   = $discovered[$name] ?? null;
+    if (!$manifest) {
+      throw new Exception('Plugin "' . $name . '" no encontrado en /plugins/. Descargalo e instalalo primero.');
+    }
+
+    foreach (($manifest['requires'] ?? []) as $dep) {
+      if (empty($discovered[$dep])) {
+        throw new Exception('El plugin "' . $name . '" requiere "' . $dep . '", que no está instalado en /plugins/.');
+      }
+      // ¿Ya está habilitado?
+      $rec = $mgr->getRecord($dep);
+      $isEnabled = !empty($rec['enabled']);
+      if ($isEnabled) continue;
+
+      // Recursivo: primero sus dependencias
+      $this->enableWithDependencies($mgr, $dep, $activados, $visitando);
+
+      // Activar
+      $mgr->enable($dep);
+      $activados[] = $dep;
+    }
+    return $activados;
   }
 
   function post_plugin_disable()
@@ -614,6 +666,28 @@ class adminController extends Controller implements ControllerInterface
   }
 
   /**
+   * Detecta cuál es el nombre de la columna de nombre de migración en una
+   * tabla de tracking. Migrator nuevo usa `migration`; esquemas viejos usan
+   * `name`. Cachea el resultado por tabla durante el request.
+   */
+  private static $_migrationColCache = [];
+  private function migrationNameColumn(string $trackingTable): string
+  {
+    if (isset(self::$_migrationColCache[$trackingTable])) {
+      return self::$_migrationColCache[$trackingTable];
+    }
+    try {
+      $pdo = $this->getPdo();
+      $cols = $pdo->query("SHOW COLUMNS FROM `" . $trackingTable . "`")->fetchAll(PDO::FETCH_COLUMN);
+      if (in_array('migration', $cols, true)) return self::$_migrationColCache[$trackingTable] = 'migration';
+      if (in_array('name', $cols, true))       return self::$_migrationColCache[$trackingTable] = 'name';
+      return self::$_migrationColCache[$trackingTable] = 'migration'; // default sano
+    } catch (Throwable $e) {
+      return self::$_migrationColCache[$trackingTable] = 'migration';
+    }
+  }
+
+  /**
    * Vista de migraciones: muestra estado del core + cada plugin habilitado.
    */
   function migraciones()
@@ -647,11 +721,16 @@ class adminController extends Controller implements ControllerInterface
       // Detectar migraciones duplicadas (mismo nombre de tabla en create_ migrations)
       $duplicados = $this->findDuplicateMigrations();
 
+      // Detectar tablas de tracking huérfanas: plugin_X_migrations donde el plugin X
+      // ya no existe en /plugins/. Son residuos de plugins que se crearon y luego eliminaron.
+      $trackingHuerfano = $this->findOrphanTrackingTables();
+
       $this->setTitle('Migraciones');
       $this->addToData('coreStatus' , $coreStatus);
       $this->addToData('coreSummary', $coreSummary);
       $this->addToData('plugins'    , $plugins);
       $this->addToData('duplicados' , $duplicados);
+      $this->addToData('trackingHuerfano', $trackingHuerfano);
       $this->setView('migraciones');
       $this->render();
 
@@ -668,6 +747,90 @@ class adminController extends Controller implements ControllerInterface
    * Shape: [ 'tabla_x' => [['path','file','source','target','mtime','ran','size']] ]
    * 'source' es 'core' o el nombre del plugin.
    */
+  /**
+   * Detecta tablas `plugin_<slug>_migrations` huérfanas: existen en la BD pero
+   * el plugin correspondiente ya no está en /plugins/ en disco.
+   * Retorna: [ ['table' => 'plugin_proyectos_migrations', 'plugin' => 'proyectos', 'count' => N], ... ]
+   */
+  private function findOrphanTrackingTables(): array
+  {
+    try {
+      $pdo = $this->getPdo();
+      $tablas = $pdo->query("SHOW TABLES LIKE 'plugin_%_migrations'")->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    } catch (Throwable $e) { return []; }
+    if (empty($tablas)) return [];
+
+    // Slugs de plugins existentes en disco (normalizado: lowercase alphanum_underscore)
+    $existentes = [];
+    if (class_exists('QuetzalPluginManager')) {
+      foreach (QuetzalPluginManager::getInstance()->listAll() as $p) {
+        $slug = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '_', $p['name']));
+        $existentes[$slug] = true;
+      }
+    }
+
+    $huerfanas = [];
+    foreach ($tablas as $t) {
+      if (!preg_match('/^plugin_(.+)_migrations$/', $t, $m)) continue;
+      $slug = $m[1];
+      if (isset($existentes[$slug])) continue; // plugin existe, no es huérfana
+
+      try {
+        $count = (int) $pdo->query("SELECT COUNT(*) FROM `" . $t . "`")->fetchColumn();
+      } catch (Throwable $e) { $count = 0; }
+
+      // Recuperar nombre de plugin "bonito" capitalizando el slug
+      $pluginName = ucfirst($slug);
+      $huerfanas[] = [
+        'table'  => $t,
+        'plugin' => $pluginName,
+        'slug'   => $slug,
+        'count'  => $count,
+      ];
+    }
+    return $huerfanas;
+  }
+
+  /**
+   * Dropea una tabla de tracking huérfana de un plugin que ya no existe en disco.
+   */
+  function post_dropear_tracking_huerfano()
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+      $table = sanitize_input($_POST['table'] ?? '');
+      if (!preg_match('/^plugin_[a-z0-9_]+_migrations$/', $table)) {
+        throw new Exception('Nombre de tabla inválido.');
+      }
+
+      // Verificar que efectivamente sea huérfana (el plugin NO existe en disco)
+      preg_match('/^plugin_(.+)_migrations$/', $table, $mt);
+      $slug = $mt[1] ?? '';
+      $enDisco = false;
+      if (class_exists('QuetzalPluginManager')) {
+        foreach (QuetzalPluginManager::getInstance()->listAll() as $p) {
+          $s = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '_', $p['name']));
+          if ($s === $slug) { $enDisco = true; break; }
+        }
+      }
+      if ($enDisco) {
+        throw new Exception('El plugin "' . $slug . '" existe en /plugins/. No se considera huérfano.');
+      }
+
+      $pdo = $this->getPdo();
+      $pdo->exec("DROP TABLE IF EXISTS `" . $table . "`");
+
+      Flasher::success('Tabla de tracking <b>' . $table . '</b> eliminada.');
+      Redirect::to('admin/migraciones');
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
   private function findDuplicateMigrations(): array
   {
     $folders = [
@@ -692,7 +855,8 @@ class adminController extends Controller implements ControllerInterface
       $pdo = $this->getPdo();
       // Core
       try {
-        $coreRan = $pdo->query('SELECT name FROM quetzal_migrations')->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        $coreCol = $this->migrationNameColumn('quetzal_migrations');
+      $coreRan = $pdo->query("SELECT `$coreCol` FROM quetzal_migrations")->fetchAll(PDO::FETCH_COLUMN) ?: [];
         $ranByTarget['core'] = array_flip($coreRan);
       } catch (Throwable $e) { $ranByTarget['core'] = []; }
       // Plugins
@@ -700,7 +864,8 @@ class adminController extends Controller implements ControllerInterface
         if ($f['target'] === 'core') continue;
         $tbl = $this->pluginTrackingTable($f['target']);
         try {
-          $ran = $pdo->query("SELECT name FROM `" . $tbl . "`")->fetchAll(PDO::FETCH_COLUMN) ?: [];
+          $col = $this->migrationNameColumn($tbl);
+          $ran = $pdo->query("SELECT `$col` FROM `" . $tbl . "`")->fetchAll(PDO::FETCH_COLUMN) ?: [];
           $ranByTarget[$f['target']] = array_flip($ran);
         } catch (Throwable $e) { $ranByTarget[$f['target']] = []; }
       }
@@ -762,9 +927,33 @@ class adminController extends Controller implements ControllerInterface
         throw new Exception(get_quetzal_message(0));
       }
 
-      $path   = (string) ($_POST['path']   ?? '');
-      $target = sanitize_input($_POST['target'] ?? 'core');
-      $force  = !empty($_POST['force']);
+      $path    = (string) ($_POST['path']   ?? '');
+      $target  = sanitize_input($_POST['target'] ?? 'core');
+      $force   = !empty($_POST['force']);
+      $missing = !empty($_POST['missing']);
+      $name    = sanitize_input($_POST['name'] ?? '');
+
+      // CASO HUÉRFANA: no hay archivo en disco, solo limpia el tracking por nombre
+      if ($missing) {
+        if ($name === '') throw new Exception('Nombre de migración requerido para limpiar huérfana.');
+        $trackingTable = $target === 'core' ? 'quetzal_migrations' : $this->pluginTrackingTable($target);
+        $col = $this->migrationNameColumn($trackingTable);
+        $pdo = $this->getPdo();
+        try {
+          $del = $pdo->prepare("DELETE FROM `" . $trackingTable . "` WHERE `$col` = :n");
+          $del->execute(['n' => $name]);
+          $n = $del->rowCount();
+        } catch (Throwable $e) {
+          throw new Exception('No se pudo leer la tabla ' . $trackingTable . ': ' . $e->getMessage());
+        }
+        if ($n === 0) {
+          Flasher::new('La migración "' . $name . '" no estaba registrada en ' . $trackingTable . '.', 'info');
+        } else {
+          Flasher::success('Migración huérfana "' . $name . '" limpiada del tracking.');
+        }
+        Redirect::to('admin/migraciones');
+        return;
+      }
 
       if ($path === '') throw new Exception('Path requerido.');
 
@@ -793,11 +982,12 @@ class adminController extends Controller implements ControllerInterface
 
       // Si ya corrió, quitar también del tracking (salvo que el usuario lo pida explícito vía force)
       $trackingTable = $target === 'core' ? 'quetzal_migrations' : $this->pluginTrackingTable($target);
+      $col = $this->migrationNameColumn($trackingTable);
       $pdo = $this->getPdo();
 
       $ran = false;
       try {
-        $check = $pdo->prepare("SELECT COUNT(*) FROM `" . $trackingTable . "` WHERE name = :n");
+        $check = $pdo->prepare("SELECT COUNT(*) FROM `" . $trackingTable . "` WHERE `$col` = :n");
         $check->execute(['n' => $nameNoExt]);
         $ran = (int) $check->fetchColumn() > 0;
       } catch (Throwable $e) { /* tabla no existe aún */ }
@@ -811,7 +1001,7 @@ class adminController extends Controller implements ControllerInterface
 
       if ($ran && $force) {
         try {
-          $del = $pdo->prepare("DELETE FROM `" . $trackingTable . "` WHERE name = :n");
+          $del = $pdo->prepare("DELETE FROM `" . $trackingTable . "` WHERE `$col` = :n");
           $del->execute(['n' => $nameNoExt]);
         } catch (Throwable $e) { /* silent */ }
       }
@@ -821,6 +1011,78 @@ class adminController extends Controller implements ControllerInterface
       }
 
       Flasher::success('Migración "' . $fileName . '" eliminada' . ($ran && $force ? ' (tracking también).' : '.'));
+      Redirect::to('admin/migraciones');
+
+    } catch (Exception $e) {
+      Flasher::error($e->getMessage());
+      Redirect::back();
+    }
+  }
+
+  /**
+   * Limpia en bloque todas las migraciones huérfanas del tracking de un target.
+   * Huérfana = registrada en la tabla de tracking pero sin archivo en disco.
+   */
+  function post_limpiar_huerfanas()
+  {
+    try {
+      $this->guardAdminAccess();
+      if (!Csrf::validate($_POST['_t'] ?? $_POST['csrf'] ?? '')) {
+        throw new Exception(get_quetzal_message(0));
+      }
+
+      $target = sanitize_input($_POST['target'] ?? '');
+      if ($target === '') throw new Exception('Target requerido.');
+
+      // Resolver carpeta de migraciones + tabla de tracking
+      if ($target === 'core') {
+        $migrationsDir = realpath(ROOT . 'app' . DS . 'migrations');
+        $trackingTable = 'quetzal_migrations';
+      } else {
+        $plugin = null;
+        if (class_exists('QuetzalPluginManager')) {
+          foreach (QuetzalPluginManager::getInstance()->listAll() as $p) {
+            if (($p['name'] ?? '') === $target) { $plugin = $p; break; }
+          }
+        }
+        if (!$plugin) throw new Exception('Plugin "' . $target . '" no encontrado.');
+        $migrationsDir = realpath(($plugin['path'] ?? '') . 'migrations');
+        $trackingTable = $this->pluginTrackingTable($target);
+      }
+
+      $pdo = $this->getPdo();
+      $col = $this->migrationNameColumn($trackingTable);
+
+      // Listar migraciones registradas
+      try {
+        $rows = $pdo->query("SELECT `$col` FROM `" . $trackingTable . "`")->fetchAll(PDO::FETCH_COLUMN);
+      } catch (Throwable $e) {
+        throw new Exception('No se pudo leer la tabla de tracking: ' . $trackingTable);
+      }
+
+      // Archivos en disco (sin extensión .php)
+      $onDisk = [];
+      if ($migrationsDir && is_dir($migrationsDir)) {
+        foreach (glob($migrationsDir . DS . '*.php') ?: [] as $f) {
+          $onDisk[] = preg_replace('/\.php$/', '', basename($f));
+        }
+      }
+
+      // Huérfanas = registradas pero sin archivo
+      $huerfanas = array_values(array_diff($rows, $onDisk));
+      if (empty($huerfanas)) {
+        Flasher::new('No hay migraciones huérfanas en ' . $target . '.', 'info');
+        Redirect::to('admin/migraciones');
+        return;
+      }
+
+      // Borrar en bloque
+      $placeholders = implode(',', array_fill(0, count($huerfanas), '?'));
+      $stmt = $pdo->prepare("DELETE FROM `" . $trackingTable . "` WHERE `$col` IN ($placeholders)");
+      $stmt->execute($huerfanas);
+      $n = $stmt->rowCount();
+
+      Flasher::success($n . ' migración(es) huérfana(s) limpiadas del tracking de ' . $target . '.');
       Redirect::to('admin/migraciones');
 
     } catch (Exception $e) {
