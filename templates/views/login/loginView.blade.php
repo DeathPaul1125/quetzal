@@ -88,9 +88,6 @@
                      class="w-full pl-10 pr-3 py-2.5 rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm"
                      placeholder="admin">
             </div>
-            @if((function_exists('is_demo') && is_demo()) || (function_exists('is_local') && is_local()))
-              <p class="text-xs text-slate-500 mt-1">Usuario por defecto: <code class="bg-slate-100 px-1 py-0.5 rounded">admin</code></p>
-            @endif
           </div>
 
           <div>
@@ -108,9 +105,6 @@
                 <i class="ri-eye-line"></i>
               </button>
             </div>
-            @if((function_exists('is_demo') && is_demo()) || (function_exists('is_local') && is_local()))
-              <p class="text-xs text-slate-500 mt-1">Contraseña por defecto: <code class="bg-slate-100 px-1 py-0.5 rounded">123456</code></p>
-            @endif
           </div>
 
           <button type="submit"
