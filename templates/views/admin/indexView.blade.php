@@ -38,7 +38,7 @@
     @php
       $stats = [
         ['label' => 'Usuarios',  'value' => method_exists('userModel','count') ? userModel::count() : '—',            'icon' => 'ri-user-3-fill',       'gradient' => 'from-sky-500 to-blue-700'],
-        ['label' => 'Productos', 'value' => method_exists('productoModel','count') ? productoModel::count() : '—',   'icon' => 'ri-archive-fill',      'gradient' => 'from-emerald-500 to-teal-700'],
+        ['label' => 'Migraciones','value' => method_exists('Migrator','count') ? '—' : '—',                              'icon' => 'ri-database-2-fill',   'gradient' => 'from-emerald-500 to-teal-700'],
         ['label' => 'Roles',     'value' => count((new QuetzalRoleManager())->getRoles() ?: []),                     'icon' => 'ri-shield-user-fill',  'gradient' => 'from-amber-500 to-orange-700'],
         ['label' => 'Plugins',   'value' => count(QuetzalPluginManager::getInstance()->getEnabled()),                'icon' => 'ri-plug-fill',         'gradient' => 'from-purple-500 to-fuchsia-700'],
       ];

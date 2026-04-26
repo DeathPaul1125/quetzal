@@ -35,6 +35,12 @@ class QuetzalCrudGenerator
     'file'     => 'varchar(255)',  // guarda el nombre del archivo; el archivo va a uploads/
     'hidden'   => 'varchar(255)',  // puede almacenar cualquier string
     'button'   => null,            // no crea columna; solo render
+    'group'    => null,            // título de sección agrupadora; sin columna
+    'image'    => 'varchar(255)',  // alias de file con accept image/* y preview
+    'color'    => 'varchar(20)',   // hex color "#rrggbb"
+    'range'    => 'int(11)',       // slider numérico
+    'tags'     => 'varchar(500)',  // CSV libre
+    'richtext' => 'text',           // textarea con TinyMCE/Quill (si está disponible en el front)
   ];
 
   /**
@@ -50,6 +56,26 @@ class QuetzalCrudGenerator
    * @var array
    */
   private array $displayPaths;
+
+  /**
+   * Toggles globales del CRUD (soft_delete, search, export_csv).
+   * Se setean con setGlobalOptions() ANTES de invocar generateCrud/etc.
+   * Se leen desde controllerTemplate, viewIndexTemplate y generateMigration.
+   *
+   * @var array{soft_delete:bool, search:bool, export_csv:bool}
+   */
+  private array $globalOptions = [
+    'soft_delete' => false,
+    'search'      => false,
+    'export_csv'  => false,
+  ];
+
+  public function setGlobalOptions(array $opts): void
+  {
+    foreach (['soft_delete', 'search', 'export_csv'] as $k) {
+      if (array_key_exists($k, $opts)) $this->globalOptions[$k] = (bool) $opts[$k];
+    }
+  }
 
 
   public function __construct(array $options = [])
@@ -235,7 +261,7 @@ class QuetzalCrudGenerator
       try {
         $v = $this->validateField($f);
       } catch (Throwable $e) { continue; }
-      if ($v['type'] === 'button') continue; // buttons no son columnas
+      if ($v['type'] === 'button' || $v['type'] === 'group') continue; // marcadores, no columnas
       if (in_array(strtolower($v['name']), $existingCols, true)) {
         $skipped[] = $v['name'];
         continue;
@@ -629,7 +655,37 @@ BLADE;
 
   private function validateField(array $field): array
   {
+    $type = $field['type'] ?? 'string';
+    // array_key_exists (no isset): los tipos sin columna SQL (button, group) tienen valor null
+    // y isset() devuelve false en ese caso.
+    if (!array_key_exists($type, self::FIELD_TYPES)) {
+      throw new Exception(sprintf('Tipo de campo desconocido: "%s"', $type));
+    }
+
     $fname = $field['name'] ?? '';
+
+    // Los grupos no son columnas — sólo títulos de sección. Se permite cualquier
+    // nombre interno (sintético si falta) para mantenerlos identificables en el
+    // array de fields, pero no se valida contra el regex de columnas reales.
+    if ($type === 'group') {
+      if ($fname === '' || !preg_match('/^[a-z_][a-z0-9_]{0,79}$/', $fname)) {
+        $fname = '__group_' . substr(md5(($field['title'] ?? '') . microtime(true)), 0, 8);
+      }
+      $title = trim((string)($field['title'] ?? $field['label'] ?? 'Sección'));
+      if ($title === '') $title = 'Sección';
+      $icon  = preg_match('/^ri-[a-z0-9-]{1,50}$/', $field['icon'] ?? '') ? $field['icon'] : '';
+      return [
+        'name'  => $fname,
+        'type'  => 'group',
+        'title' => $title,
+        'icon'  => $icon,
+        'width' => 4,    // los grupos siempre son full-width
+        'length'=> 0,
+        'required' => false,
+        'unique'   => false,
+      ];
+    }
+
     if (!preg_match('/^[a-z][a-z0-9_]{0,49}$/', $fname)) {
       throw new Exception(sprintf('Nombre de campo inválido: "%s"', $fname));
     }
@@ -637,23 +693,39 @@ BLADE;
       throw new Exception(sprintf('El campo "%s" se genera automáticamente, no lo incluyas.', $fname));
     }
 
-    $type = $field['type'] ?? 'string';
-    if (!isset(self::FIELD_TYPES[$type])) {
-      throw new Exception(sprintf('Tipo de campo desconocido: "%s"', $type));
-    }
-
     // width: 1|2|3|4 columnas de 4 (default 2 = half)
     $width = (int) ($field['width'] ?? 2);
     if ($width < 1 || $width > 4) $width = 2;
 
     $out = [
-      'name'     => $fname,
-      'type'     => $type,
-      'length'   => (int) ($field['length']   ?? 255),
-      'width'    => $width,
-      'required' => !empty($field['required']),
-      'unique'   => !empty($field['unique']),
+      'name'        => $fname,
+      'type'        => $type,
+      'length'      => (int) ($field['length']   ?? 255),
+      'width'       => $width,
+      'required'    => !empty($field['required']),
+      'unique'      => !empty($field['unique']),
+      // Metadata genérica (todos los tipos pueden traerla, se renderiza si aplica)
+      'placeholder' => (string) ($field['placeholder'] ?? ''),
+      'help_text'   => (string) ($field['help_text']   ?? ''),
+      'default_value' => (string) ($field['default_value'] ?? ''),
+      // Validaciones (números → min/max/step; strings → min_length/regex; ya hay 'required')
+      'min'         => isset($field['min']) && $field['min'] !== '' ? (string)$field['min'] : '',
+      'max'         => isset($field['max']) && $field['max'] !== '' ? (string)$field['max'] : '',
+      'min_length'  => isset($field['min_length']) ? (int)$field['min_length'] : 0,
+      'regex'       => (string) ($field['regex'] ?? ''),
+      'step'        => isset($field['step']) && $field['step'] !== '' ? (string)$field['step'] : '',
     ];
+
+    // range tiene min/max/step propios con defaults razonables
+    if ($type === 'range') {
+      if ($out['min']  === '') $out['min']  = '0';
+      if ($out['max']  === '') $out['max']  = '100';
+      if ($out['step'] === '') $out['step'] = '1';
+    }
+    // image: comparte semántica de file con default accept
+    if ($type === 'image') {
+      $out['file_accept'] = (string)($field['file_accept'] ?? 'image/*');
+    }
 
     // Metadata específica para tipos no-estándar
     if ($type === 'hidden') {
@@ -663,11 +735,11 @@ BLADE;
       $out['button_label']  = (string)($field['button_label']  ?? 'Acción');
       $out['button_icon']   = preg_match('/^ri-[a-z0-9-]{1,50}$/', $field['button_icon'] ?? '')
                               ? $field['button_icon'] : '';
-      $out['button_action'] = in_array($field['button_action'] ?? 'submit', ['submit', 'reset', 'link'], true)
-                              ? $field['button_action'] : 'submit';
+      $btnAction = $field['button_action'] ?? 'submit';
+      $out['button_action'] = in_array($btnAction, ['submit', 'reset', 'link'], true) ? $btnAction : 'submit';
       $out['button_url']    = (string)($field['button_url'] ?? '');
-      $out['button_style']  = in_array($field['button_style'] ?? 'primary', ['primary', 'secondary', 'danger'], true)
-                              ? $field['button_style'] : 'primary';
+      $btnStyle = $field['button_style'] ?? 'primary';
+      $out['button_style']  = in_array($btnStyle, ['primary', 'secondary', 'danger'], true) ? $btnStyle : 'primary';
     }
     if ($type === 'file') {
       // Subtipo del archivo para validar extensiones por defecto
@@ -709,8 +781,8 @@ BLADE;
     foreach ($fields as $raw) {
       $f = $this->validateField($raw);
 
-      // Botón: no genera columna
-      if ($f['type'] === 'button') continue;
+      // Botón / grupo: no generan columna
+      if ($f['type'] === 'button' || $f['type'] === 'group') continue;
 
       $sqlType = self::FIELD_TYPES[$f['type']];
       if ($sqlType === null) continue;
@@ -754,6 +826,9 @@ BLADE;
     $parts = array_merge($parts, $lines);
     $parts[] = '            `created_at` datetime DEFAULT current_timestamp()';
     $parts[] = '            `updated_at` timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()';
+    if (!empty($this->globalOptions['soft_delete'])) {
+      $parts[] = '            `deleted_at` datetime NULL DEFAULT NULL';
+    }
     $parts[] = '            PRIMARY KEY (`id`)';
 
     if ($uniques) $parts = array_merge($parts, $uniques);
@@ -768,6 +843,16 @@ BLADE;
 
   private function modelTemplate(string $name, string $table): string
   {
+    $softDelete = !empty($this->globalOptions['soft_delete']);
+
+    $softDeleteMethod = $softDelete
+      ? "\n  static function softDelete(int \$id)\n  {\n"
+        . "    return parent::update(self::\$t1, ['id' => \$id], ['deleted_at' => date('Y-m-d H:i:s')]);\n"
+        . "  }\n\n  static function restore(int \$id)\n  {\n"
+        . "    return parent::update(self::\$t1, ['id' => \$id], ['deleted_at' => null]);\n"
+        . "  }\n"
+      : '';
+
     return <<<PHP
 <?php
 
@@ -811,7 +896,7 @@ class {$name}Model extends Model
   {
     return parent::remove(self::\$t1, ['id' => \$id]);
   }
-}
+{$softDeleteMethod}}
 
 PHP;
   }
@@ -943,11 +1028,12 @@ PHP;
       try {
         $v = $this->validateField($f);
       } catch (Throwable $e) { continue; }
-      if ($v['type'] === 'file')     $fileFields[]     = $v;
+      if ($v['type'] === 'file' || $v['type'] === 'image') $fileFields[] = $v;
       if ($v['type'] === 'password') $passwordFields[] = $v;
       if ($v['type'] === 'email')    $emailFields[]    = $v;
       if ($v['type'] === 'boolean')  $booleanFields[]  = $v;
       if ($v['type'] === 'button')   $buttonFields[]   = $v;
+      if ($v['type'] === 'group')    $buttonFields[]   = $v;  // tratamos igual: unset del $data
     }
 
     // Bloques de código generados
@@ -961,6 +1047,72 @@ PHP;
     if (!empty($buttonFields)) {
       $names = array_map(fn($b) => "'" . $b['name'] . "'", $buttonFields);
       $unsetButtonsBlock = "      foreach ([" . implode(', ', $names) . "] as \$__b) unset(\$data[\$__b]);\n";
+    }
+
+    // Toggles globales
+    $softDelete = !empty($this->globalOptions['soft_delete']);
+    $useSearch  = !empty($this->globalOptions['search']);
+    $useExport  = !empty($this->globalOptions['export_csv']);
+
+    // Campos string-ish para el WHERE LIKE del buscador
+    $searchableCols = [];
+    if ($useSearch) {
+      foreach ($fields as $f) {
+        try { $v = $this->validateField($f); } catch (Throwable $e) { continue; }
+        if (in_array($v['type'], ['string','text','email','tags'], true)) {
+          $searchableCols[] = $v['name'];
+        }
+      }
+    }
+
+    // Construcción de bloques índice/borrar/export según toggles
+    if ($useSearch && !empty($searchableCols)) {
+      $likeChunks = [];
+      foreach ($searchableCols as $c) $likeChunks[] = "`{$c}` LIKE :q_q";
+      $likeWhere = '(' . implode(' OR ', $likeChunks) . ')';
+      $searchBlock = "    \$q = sanitize_input((string)(\$_GET['q'] ?? ''));\n"
+                   . "    \$conds = []; \$params = [];\n"
+                   . "    if (\$q !== '') { \$conds[] = \"{$likeWhere}\"; \$params['q_q'] = '%' . \$q . '%'; }\n";
+    } else {
+      $searchBlock = "    \$q = ''; \$conds = []; \$params = [];\n";
+    }
+    if ($softDelete) {
+      $searchBlock .= "    \$conds[] = '`deleted_at` IS NULL';\n";
+    }
+    $whereJoin = "    \$where = \$conds ? 'WHERE ' . implode(' AND ', \$conds) : '';\n";
+    $indexBody = $searchBlock
+               . $whereJoin
+               . "    \$sql  = sprintf('SELECT * FROM %s %s ORDER BY id DESC', {$model}::\$t1, \$where);\n"
+               . "    \$rows = PaginationHandler::paginate(\$sql, \$params, 15);\n";
+
+    // borrar: soft delete vs hard
+    $borrarBody = $softDelete
+      ? "      if (!{$model}::softDelete(\$id)) {\n"
+        . "        throw new Exception('No se pudo eliminar el registro.');\n"
+        . "      }\n"
+      : "      if (!{$model}::deleteById(\$id)) {\n"
+        . "        throw new Exception('No se pudo eliminar el registro.');\n"
+        . "      }\n";
+
+    // export() opcional
+    $exportMethod = '';
+    if ($useExport) {
+      $deletedCond = $softDelete ? "'WHERE `deleted_at` IS NULL'" : "''";
+      $exportMethod = "\n  function export()\n"
+        . "  {\n"
+        . "    \$sql = sprintf('SELECT * FROM %s %s ORDER BY id DESC', {$model}::\$t1, {$deletedCond});\n"
+        . "    \$rows = Model::query(\$sql) ?: [];\n"
+        . "    header('Content-Type: text/csv; charset=utf-8');\n"
+        . "    header('Content-Disposition: attachment; filename=\"{$singular}-' . date('Ymd-His') . '.csv\"');\n"
+        . "    \$out = fopen('php://output', 'w');\n"
+        . "    fprintf(\$out, chr(0xEF) . chr(0xBB) . chr(0xBF));\n"
+        . "    if (!empty(\$rows)) {\n"
+        . "      fputcsv(\$out, array_keys(\$rows[0]));\n"
+        . "      foreach (\$rows as \$r) fputcsv(\$out, \$r);\n"
+        . "    }\n"
+        . "    fclose(\$out);\n"
+        . "    exit;\n"
+        . "  }\n";
     }
 
     return <<<PHP
@@ -983,16 +1135,7 @@ class {$singular}Controller extends Controller implements ControllerInterface
 
   function index()
   {
-    \$q = sanitize_input((string)(\$_GET['q'] ?? ''));
-    \$where = ''; \$params = [];
-    if (\$q !== '') {
-      \$where = "WHERE id = :id_q"; // Personaliza los campos de búsqueda
-      \$params['id_q'] = \$q;
-    }
-
-    \$sql  = sprintf('SELECT * FROM %s %s ORDER BY id DESC', {$model}::\$t1, \$where);
-    \$rows = PaginationHandler::paginate(\$sql, \$params, 15);
-
+{$indexBody}
     \$this->setTitle('{$singular}');
     \$this->addToData('rows', \$rows);
     \$this->addToData('filters', ['q' => \$q]);
@@ -1102,10 +1245,7 @@ class {$singular}Controller extends Controller implements ControllerInterface
       \$row = {$model}::by_id(\$id);
       if (empty(\$row)) throw new Exception('Registro no encontrado.');
 
-      if (!{$model}::deleteById(\$id)) {
-        throw new Exception('No se pudo eliminar el registro.');
-      }
-
+{$borrarBody}
       Flasher::success('Registro eliminado.');
       Redirect::to('{$singular}');
 
@@ -1114,7 +1254,7 @@ class {$singular}Controller extends Controller implements ControllerInterface
       Redirect::back();
     }
   }
-}
+{$exportMethod}}
 
 PHP;
   }
@@ -1132,6 +1272,7 @@ PHP;
 
       // Saltar campos que no tienen columna en BD o que no queremos listar
       if (($v['type'] ?? '') === 'button') continue;
+      if (($v['type'] ?? '') === 'group')  continue;  // sólo título de sección, no es columna
       // Passwords nunca se listan (seguridad)
       if (($v['type'] ?? '') === 'password') continue;
       // Hidden no se lista por default (es metadata interna)
@@ -1193,6 +1334,19 @@ PHP;
       $lookupSection = "@php \$lookups = []; @endphp\n\n";
     }
 
+    // Search + export buttons según toggles globales
+    $searchInput = !empty($this->globalOptions['search'])
+      ? "<form method=\"get\" action=\"{$name}\" class=\"flex items-center gap-2\">\n"
+        . "      <input type=\"text\" name=\"q\" value=\"{{ \$filters['q'] ?? '' }}\" placeholder=\"Buscar...\" class=\"px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:border-primary focus:ring-primary w-64\">\n"
+        . "      <button type=\"submit\" class=\"px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm\"><i class=\"ri-search-line\"></i></button>\n"
+        . "    </form>"
+      : '';
+    $exportBtn = !empty($this->globalOptions['export_csv'])
+      ? "<a href=\"{$name}/export\" class=\"inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-medium\">\n"
+        . "      <i class=\"ri-download-2-line\"></i> Exportar CSV\n"
+        . "    </a>"
+      : '';
+
     return <<<BLADE
 @extends('includes.admin.layout')
 
@@ -1207,9 +1361,13 @@ PHP;
       <h2 class="font-semibold text-slate-800">Listado</h2>
       <span class="inline-flex items-center justify-center min-w-[1.75rem] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">{{ \$rows['total'] ?? 0 }}</span>
     </div>
+    {$searchInput}
+    <div class="flex items-center gap-2">
+    {$exportBtn}
     <a href="{$name}/crear" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg btn-primary text-sm font-semibold">
       <i class="ri-add-line"></i> Nuevo
     </a>
+    </div>
   </div>
 
   <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -1266,44 +1424,124 @@ BLADE;
    */
   private function renderFieldInput(array $v, bool $isEdit = false, string $varName = 'row'): string
   {
+    // Grupo (título de sección): full-width dentro del mismo grid. La fila
+    // siguiente vuelve a empezar porque el grid se ajusta automáticamente.
+    if ($v['type'] === 'group') {
+      $title = htmlspecialchars($v['title'] ?? 'Sección', ENT_QUOTES);
+      $iconHtml = !empty($v['icon'])
+        ? '<i class="' . htmlspecialchars($v['icon'], ENT_QUOTES) . ' text-primary"></i> '
+        : '';
+      return "      <div class=\"sm:col-span-4 pt-4 mt-2 border-t border-slate-200 first:border-t-0 first:mt-0 first:pt-0\">\n"
+           . "        <h3 class=\"text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2\">{$iconHtml}{$title}</h3>\n"
+           . "      </div>\n";
+    }
+
     $label    = ucfirst(str_replace('_', ' ', $v['name']));
     $req      = $v['required'] ? 'required' : '';
     $star     = ($v['required'] && !$isEdit) ? ' <span class="text-red-500">*</span>' : '';
     $colSpan  = 'sm:col-span-' . $v['width'];
-    $valueAttr= $isEdit ? " value=\"{{ \$row['{$v['name']}'] ?? '' }}\"" : '';
+
+    // En crear: usar default_value si la URL no override. En editar: row || default || URL
+    $defaultEsc = addslashes((string)($v['default_value'] ?? ''));
+    $valuePhp = $isEdit
+      ? "\$row['{$v['name']}'] ?? (\$_GET['{$v['name']}'] ?? '{$defaultEsc}')"
+      : "\$_GET['{$v['name']}'] ?? '{$defaultEsc}'";
+    $valueAttr = " value=\"{{ {$valuePhp} }}\"";
+
+    // Atributos opcionales comunes
+    $phAttr = !empty($v['placeholder'])
+      ? ' placeholder="' . htmlspecialchars($v['placeholder'], ENT_QUOTES) . '"'
+      : '';
+    $minAttr   = $v['min']        !== '' ? ' min="' . htmlspecialchars($v['min'], ENT_QUOTES) . '"' : '';
+    $maxAttr   = $v['max']        !== '' ? ' max="' . htmlspecialchars($v['max'], ENT_QUOTES) . '"' : '';
+    $stepAttr  = $v['step']       !== '' ? ' step="' . htmlspecialchars($v['step'], ENT_QUOTES) . '"' : '';
+    $minLenAttr= !empty($v['min_length']) ? ' minlength="' . (int)$v['min_length'] . '"' : '';
+    $patternAttr = !empty($v['regex'])
+      ? ' pattern="' . htmlspecialchars($v['regex'], ENT_QUOTES) . '"'
+      : '';
+    $helpHtml  = !empty($v['help_text'])
+      ? "        <p class=\"text-xs text-slate-500 mt-1\">" . htmlspecialchars($v['help_text'], ENT_QUOTES) . "</p>\n"
+      : '';
 
     if ($v['type'] === 'text') {
       $content = $isEdit ? "{{ \$row['{$v['name']}'] ?? '' }}" : '';
       return "      <div class=\"{$colSpan}\">\n"
            . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
-           . "        <textarea name=\"{$v['name']}\" rows=\"3\" {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">{$content}</textarea>\n"
+           . "        <textarea name=\"{$v['name']}\" rows=\"3\"{$phAttr}{$minLenAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">{$content}</textarea>\n"
+           . $helpHtml
+           . "      </div>\n";
+    }
+    if ($v['type'] === 'richtext') {
+      $content = $isEdit ? "{{ \$row['{$v['name']}'] ?? '' }}" : '';
+      // data-richtext es un hook para que el JS del front (TinyMCE/Quill/etc) lo enriquezca
+      return "      <div class=\"{$colSpan}\">\n"
+           . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
+           . "        <textarea name=\"{$v['name']}\" rows=\"6\" data-richtext=\"1\"{$phAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">{$content}</textarea>\n"
+           . $helpHtml
            . "      </div>\n";
     }
     if ($v['type'] === 'boolean') {
-      $checked = $isEdit ? " @if(!empty(\$row['{$v['name']}'])) checked @endif" : '';
+      $checked = $isEdit
+        ? " @if(!empty(\$row['{$v['name']}'])) checked @endif"
+        : (!empty($v['default_value']) ? ' checked' : '');
       return "      <div class=\"{$colSpan}\">\n"
            . "        <label class=\"flex items-center gap-2 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer h-full\">\n"
            . "          <input type=\"checkbox\" name=\"{$v['name']}\" value=\"1\"{$checked} class=\"rounded border-slate-300 text-primary focus:ring-primary\">\n"
            . "          <span class=\"text-sm font-medium\">{$label}</span>\n"
            . "        </label>\n"
+           . $helpHtml
            . "      </div>\n";
     }
     if (in_array($v['type'], ['int', 'bigint', 'decimal'])) {
-      $step = $v['type'] === 'decimal' ? '0.01' : '1';
+      $stepDefault = $v['type'] === 'decimal' ? '0.01' : '1';
+      $stepFinal   = $v['step'] !== '' ? $v['step'] : $stepDefault;
+      $stepFinalAttr = ' step="' . htmlspecialchars($stepFinal, ENT_QUOTES) . '"';
       return "      <div class=\"{$colSpan}\">\n"
            . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
-           . "        <input type=\"number\" name=\"{$v['name']}\" step=\"{$step}\"{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+           . "        <input type=\"number\" name=\"{$v['name']}\"{$stepFinalAttr}{$minAttr}{$maxAttr}{$phAttr}{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+           . $helpHtml
+           . "      </div>\n";
+    }
+    if ($v['type'] === 'range') {
+      // Slider con badge mostrando el valor actual via Alpine.js
+      $minVal  = htmlspecialchars($v['min']  !== '' ? $v['min']  : '0',   ENT_QUOTES);
+      $maxVal  = htmlspecialchars($v['max']  !== '' ? $v['max']  : '100', ENT_QUOTES);
+      $stepVal = htmlspecialchars($v['step'] !== '' ? $v['step'] : '1',   ENT_QUOTES);
+      return "      <div class=\"{$colSpan}\" x-data=\"{ v: {{ {$valuePhp} ?: {$minVal} }} }\">\n"
+           . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star} <span class=\"font-mono text-primary ml-1\" x-text=\"v\"></span></label>\n"
+           . "        <input type=\"range\" name=\"{$v['name']}\" min=\"{$minVal}\" max=\"{$maxVal}\" step=\"{$stepVal}\"{$valueAttr} x-model=\"v\" {$req} class=\"w-full\">\n"
+           . $helpHtml
+           . "      </div>\n";
+    }
+    if ($v['type'] === 'color') {
+      return "      <div class=\"{$colSpan}\">\n"
+           . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
+           . "        <div class=\"flex items-center gap-2\">\n"
+           . "          <input type=\"color\" name=\"{$v['name']}\"{$valueAttr} {$req} class=\"h-10 w-14 rounded border border-slate-300 cursor-pointer\">\n"
+           . "          <span class=\"text-xs font-mono text-slate-500\">{{ {$valuePhp} ?: '#000000' }}</span>\n"
+           . "        </div>\n"
+           . $helpHtml
+           . "      </div>\n";
+    }
+    if ($v['type'] === 'tags') {
+      // Tags simples separados por coma. UI Alpine para chips visuales.
+      return "      <div class=\"{$colSpan}\">\n"
+           . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
+           . "        <input type=\"text\" name=\"{$v['name']}\" maxlength=\"500\"{$phAttr}{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm font-mono\">\n"
+           . "        <p class=\"text-xs text-slate-500 mt-1\">Separá los tags con coma. Ej: <code>uno, dos, tres</code></p>\n"
+           . $helpHtml
            . "      </div>\n";
     }
     if ($v['type'] === 'date' || $v['type'] === 'datetime') {
-      $type = $v['type'] === 'date' ? 'date' : 'datetime-local';
+      $inputType = $v['type'] === 'date' ? 'date' : 'datetime-local';
       return "      <div class=\"{$colSpan}\">\n"
            . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
-           . "        <input type=\"{$type}\" name=\"{$v['name']}\"{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+           . "        <input type=\"{$inputType}\" name=\"{$v['name']}\"{$minAttr}{$maxAttr}{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+           . $helpHtml
            . "      </div>\n";
     }
     if ($v['type'] === 'select') {
-      return $this->renderSelectInput($v, $isEdit, $colSpan, $label, $star, $req);
+      return $this->renderSelectInput($v, $isEdit, $colSpan, $label, $star, $req, $helpHtml);
     }
     if ($v['type'] === 'password') {
       // En editar NO prellenamos (user-friendly + seguridad). El controlador deja el
@@ -1312,30 +1550,41 @@ BLADE;
         ? '<p class="text-xs text-slate-400 mt-1">Déjalo vacío para no cambiar.</p>'
         : '';
       $reqAttr = $isEdit ? '' : $req;  // no requerido en edit
+      $minLenSafe = !empty($v['min_length']) ? ' minlength="' . max(6, (int)$v['min_length']) . '"' : ' minlength="6"';
       return "      <div class=\"{$colSpan}\">\n"
            . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
-           . "        <input type=\"password\" name=\"{$v['name']}\" minlength=\"6\" maxlength=\"{$v['length']}\" autocomplete=\"new-password\" {$reqAttr} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+           . "        <input type=\"password\" name=\"{$v['name']}\"{$minLenSafe} maxlength=\"{$v['length']}\"{$phAttr} autocomplete=\"new-password\" {$reqAttr} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
            . "        {$hint}\n"
+           . $helpHtml
            . "      </div>\n";
     }
     if ($v['type'] === 'email') {
       return "      <div class=\"{$colSpan}\">\n"
            . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
-           . "        <input type=\"email\" name=\"{$v['name']}\" maxlength=\"{$v['length']}\"{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+           . "        <input type=\"email\" name=\"{$v['name']}\" maxlength=\"{$v['length']}\"{$phAttr}{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+           . $helpHtml
            . "      </div>\n";
     }
-    if ($v['type'] === 'file') {
-      $accept = !empty($v['file_accept']) ? ' accept="' . htmlspecialchars($v['file_accept'], ENT_QUOTES) . '"' : '';
+    if ($v['type'] === 'file' || $v['type'] === 'image') {
+      $accept = !empty($v['file_accept'])
+        ? ' accept="' . htmlspecialchars($v['file_accept'], ENT_QUOTES) . '"'
+        : ($v['type'] === 'image' ? ' accept="image/*"' : '');
+      $isImage = $v['type'] === 'image';
       $current = $isEdit
-        ? "        @if(!empty(\$row['{$v['name']}']))\n"
-         . "          <p class=\"text-xs text-slate-500 mt-1\">Actual: <a href=\"uploads/{{ \$row['{$v['name']}'] }}\" target=\"_blank\" class=\"text-primary hover:underline\">{{ \$row['{$v['name']}'] }}</a>. Sube uno nuevo para reemplazar.</p>\n"
-         . "        @endif\n"
+        ? ($isImage
+            ? "        @if(!empty(\$row['{$v['name']}']))\n"
+              . "          <div class=\"mt-2\"><img src=\"uploads/{{ \$row['{$v['name']}'] }}\" alt=\"\" class=\"max-h-32 rounded border border-slate-200\"></div>\n"
+              . "        @endif\n"
+            : "        @if(!empty(\$row['{$v['name']}']))\n"
+              . "          <p class=\"text-xs text-slate-500 mt-1\">Actual: <a href=\"uploads/{{ \$row['{$v['name']}'] }}\" target=\"_blank\" class=\"text-primary hover:underline\">{{ \$row['{$v['name']}'] }}</a>. Sube uno nuevo para reemplazar.</p>\n"
+              . "        @endif\n")
         : '';
       $reqAttr = $isEdit ? '' : $req;
       return "      <div class=\"{$colSpan}\">\n"
            . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
            . "        <input type=\"file\" name=\"{$v['name']}\"{$accept} {$reqAttr} class=\"w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:text-white file:font-semibold file:px-3 file:py-2 hover:file:opacity-90\">\n"
            . $current
+           . $helpHtml
            . "      </div>\n";
     }
     if ($v['type'] === 'hidden') {
@@ -1371,7 +1620,8 @@ BLADE;
     // string (default)
     return "      <div class=\"{$colSpan}\">\n"
          . "        <label class=\"block text-sm font-medium text-slate-700 mb-1.5\">{$label}{$star}</label>\n"
-         . "        <input type=\"text\" name=\"{$v['name']}\" maxlength=\"{$v['length']}\"{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+         . "        <input type=\"text\" name=\"{$v['name']}\" maxlength=\"{$v['length']}\"{$minLenAttr}{$patternAttr}{$phAttr}{$valueAttr} {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
+         . $helpHtml
          . "      </div>\n";
   }
 
@@ -1380,7 +1630,7 @@ BLADE;
    *   - source=static: opciones literales hardcodeadas en el template
    *   - source=table:  un @php inline que carga las opciones del schema al render
    */
-  private function renderSelectInput(array $v, bool $isEdit, string $colSpan, string $label, string $star, string $req): string
+  private function renderSelectInput(array $v, bool $isEdit, string $colSpan, string $label, string $star, string $req, string $helpHtml = ''): string
   {
     $name      = $v['name'];
     $currentPhp= $isEdit ? "\$row['{$name}'] ?? ''" : "''";
@@ -1414,6 +1664,7 @@ BLADE;
            . $optionsBlock
            . "        </select>\n"
            . "        <p class=\"text-xs text-slate-400 mt-1\">Opciones desde <code>{$table}</code>.</p>\n"
+           . $helpHtml
            . "      </div>\n";
     }
 
@@ -1432,6 +1683,7 @@ BLADE;
          . "        <select name=\"{$name}\" {$req} class=\"w-full rounded-lg border-slate-300 focus:border-primary focus:ring-primary text-sm\">\n"
          . $optionsHtml
          . "        </select>\n"
+         . $helpHtml
          . "      </div>\n";
   }
 
@@ -1441,7 +1693,7 @@ BLADE;
     $hasFile = false;
     foreach ($fields as $f) {
       $v = $this->validateField($f);
-      if ($v['type'] === 'file') $hasFile = true;
+      if ($v['type'] === 'file' || $v['type'] === 'image') $hasFile = true;
       $inputs .= $this->renderFieldInput($v, false);
     }
     $enctype = $hasFile ? ' enctype="multipart/form-data"' : '';
@@ -1483,7 +1735,7 @@ BLADE;
     $hasFile = false;
     foreach ($fields as $f) {
       $v = $this->validateField($f);
-      if ($v['type'] === 'file') $hasFile = true;
+      if ($v['type'] === 'file' || $v['type'] === 'image') $hasFile = true;
       $inputs .= $this->renderFieldInput($v, true);
     }
     $enctype = $hasFile ? ' enctype="multipart/form-data"' : '';
@@ -1533,6 +1785,18 @@ BLADE;
       // Saltar campos sin valor (botones) o sensibles (password)
       if (($v['type'] ?? '') === 'button')   continue;
       if (($v['type'] ?? '') === 'password') continue;
+
+      // Los grupos se renderizan como divisores con título dentro de <dl>
+      if (($v['type'] ?? '') === 'group') {
+        $title = htmlspecialchars($v['title'] ?? 'Sección', ENT_QUOTES);
+        $iconHtml = !empty($v['icon'])
+          ? '<i class="' . htmlspecialchars($v['icon'], ENT_QUOTES) . ' text-primary"></i> '
+          : '';
+        $rows .= "        <div class=\"px-5 py-3 bg-slate-50 border-b border-slate-100\">\n"
+              . "          <h4 class=\"text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2\">{$iconHtml}{$title}</h4>\n"
+              . "        </div>\n";
+        continue;
+      }
 
       $isSelectTable = (($v['type'] ?? '') === 'select'
         && ($v['select_source'] ?? 'static') === 'table'

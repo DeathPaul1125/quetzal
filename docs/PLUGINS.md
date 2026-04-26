@@ -382,6 +382,101 @@ Esto significa que:
 
 ---
 
+## 🧪 Tests del sistema de plugins
+
+Quetzal trae una suite de tests propia (sin phpunit) en `tests/`. Se ejecuta con un solo comando y valida tanto la lógica de negocio como la salud de cada plugin instalado.
+
+### Cómo ejecutarla
+
+```bash
+php tests/run.php                       # toda la suite
+php tests/run.php Facturador            # sólo carpeta Facturador
+php tests/run.php WooCommerce           # sólo WooCommerce
+php tests/run.php --filter=variantes    # sólo casos cuyo título contiene "variantes"
+```
+
+Salida típica:
+
+```
+== Plugins/PluginsLintTest.php
+  ✓ [Facturador] todos los .php compilan (php -l) (3271ms)
+  ✓ [Facturador] todas las vistas .blade.php compilan  (3480ms)
+  ✓ [Facturador] plugin.json válido + claves mínimas   (0ms)
+  ✓ [Facturador] migraciones retornan up()/down()      (1ms)
+  ...
+────────────────────────────────────────────────────────────
+140 ok · 0 fail · 0 skip · 38707ms total
+```
+
+El runner devuelve exit code `1` si cualquier caso falla — apto para CI.
+
+### Qué se valida automáticamente por cada plugin
+
+[`tests/Plugins/PluginsLintTest.php`](../tests/Plugins/PluginsLintTest.php) ejecuta cuatro chequeos sobre **cada** plugin presente en `/plugins/`:
+
+| Chequeo | Qué garantiza |
+|---|---|
+| **Lint PHP** | Cada `*.php` (no Blade) pasa `php -l` — sin errores de sintaxis. |
+| **Compilación Blade** | Cada `*.blade.php` compila vía `QuetzalBladeEngine` y el output también pasa `php -l`. |
+| **Manifest** | `plugin.json` es JSON válido y tiene al menos `name` + `version`; si trae `requires`, debe ser array. |
+| **Migraciones** | Cada archivo en `migrations/` retorna un objeto con métodos `up(PDO)` y `down(PDO)`. |
+
+Esto significa que **agregar un plugin nuevo a `/plugins/` automáticamente lo cubre** con esos 4 tests sin tocar la suite. Si un commit rompe Blade en cualquier vista de cualquier plugin, los tests lo cazan.
+
+### Tests específicos de plugins existentes
+
+| Archivo | Cubre |
+|---|---|
+| [`tests/WooCommerce/WooMapperTest.php`](../tests/WooCommerce/WooMapperTest.php) | 21 casos puros del mapeo Quetzal ↔ WooCommerce: `productoToWoo` simple/variable, `varianteToWoo`, `varianteFromWoo`, `productoFromWoo`, `clienteToWoo`, `clienteFromWoo`, `ordenFromWoo`, `mapPaymentMethod`, `buildAttributes`. |
+| [`tests/Facturador/StockDeltaTest.php`](../tests/Facturador/StockDeltaTest.php) | 9 casos sobre la lógica de signo de delta de `fStockModel::aplicar` (entrada/salida/venta/devolucion/ajuste/traspaso). |
+| [`tests/Facturador/KardexLogicTest.php`](../tests/Facturador/KardexLogicTest.php) | 6 casos sobre el cálculo de saldo corrido del kardex (totales de entradas, salidas, saldo final, saldo negativo por sobreventa). |
+| [`tests/Facturador/fProductoModelTest.php`](../tests/Facturador/fProductoModelTest.php) | Stubbeando `Model`, valida que `variantes_disponibles()` cachea correctamente y que las funciones defensivas devuelven `[]` / `0` cuando la migración de variantes aún no corrió. |
+
+### Cómo agregar tests a tu plugin
+
+1. Crea una carpeta con el nombre del plugin: `tests/MiPlugin/`.
+2. Cualquier archivo `*Test.php` ahí adentro es auto-descubierto.
+3. El archivo **debe retornar** un array asociativo `[ 'titulo' => fn() => ... ]`. El runner ejecuta cada closure dentro de un `try/catch`.
+
+```php
+<?php
+// tests/MiPlugin/MiClaseTest.php
+
+require_once __DIR__ . '/../../plugins/MiPlugin/classes/MiClase.php';
+
+return [
+  'suma básica' => function () {
+    q_assert_eq(4, MiClase::suma(2, 2));
+  },
+
+  'división por cero tira excepción' => function () {
+    q_assert_throws(fn() => MiClase::dividir(1, 0), 'división');
+  },
+];
+```
+
+### Helpers de aserción disponibles
+
+Definidos en [`tests/lib/Assert.php`](../tests/lib/Assert.php):
+
+| Helper | Propósito |
+|---|---|
+| `q_assert_true($v)` | Falla si `$v !== true`. |
+| `q_assert_eq($expected, $actual)` | Comparación estricta `===`. |
+| `q_assert_eq_loose($expected, $actual)` | Comparación laxa `==` (útil para floats). |
+| `q_assert_contains($needle, $haystack)` | Funciona con strings y arrays. |
+| `q_assert_throws($fn, $msgFragment)` | Verifica que el callable tire excepción cuyo mensaje contiene el fragmento. |
+| `q_assert_array_has_key($key, $arr)` | Falla si la key no existe. |
+
+### Recomendaciones para tests de plugin
+
+- **Apuntá a funciones puras**: las clases que no tocan PDO/HTTP son las más fáciles de cubrir. Mappers, validators y helpers son ideales.
+- **Stubeá `Model` cuando necesites cargar archivos que extienden `Model`**: ver [`tests/Facturador/fProductoModelTest.php`](../tests/Facturador/fProductoModelTest.php) para el patrón con `eval('class Model { ... }')` antes del `require_once`.
+- **Evitá tests que toquen BD real**: si necesitás cubrir una integración, replicá el algoritmo crítico en una función pura local del test (como hicimos con `q_test_calc_delta` y `q_test_kardex_calc`) — así el test sirve de guard-rail si alguien cambia el upstream.
+- **Los 4 chequeos de `PluginsLintTest` ya te cubren** lint, Blade, manifest y migraciones — no dupliques eso.
+
+---
+
 ## ✅ Buenas prácticas
 
 - **Nombra tu plugin con PascalCase** y que el folder coincida con el campo `name` del manifest.

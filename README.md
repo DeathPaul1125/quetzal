@@ -144,6 +144,20 @@ En el último paso del wizard hay un bloque colapsable **🧪 Modo pruebas · Re
 
 ---
 
+## ✅ Suite de tests
+
+Quetzal trae una suite de tests propia (sin phpunit) en `tests/`:
+
+```bash
+php tests/run.php                       # toda la suite
+php tests/run.php WooCommerce           # sólo una carpeta
+php tests/run.php --filter=variantes    # filtro por nombre del caso
+```
+
+Cada plugin presente en `/plugins/` queda cubierto **automáticamente** con cuatro chequeos: lint PHP, compilación de todas las vistas Blade, validez del `plugin.json` y forma correcta de las migraciones (`up()`/`down()`). Más detalles y cómo agregar tests para tu plugin en [docs/PLUGINS.md → Tests](docs/PLUGINS.md#-tests-del-sistema-de-plugins).
+
+---
+
 ## 🎨 Personalización del dashboard
 
 El panel admin está en:
