@@ -9,16 +9,7 @@
  * para poder cargar el archivo sin levantar el framework completo.
  */
 
-if (!class_exists('Model')) {
-  // Stub mínimo de Model para que las clases hijas puedan cargarse en aislamiento.
-  eval('class Model {
-    public static function query($sql, $params = []) { return []; }
-    public static function list($table, $where = [], $limit = null) { return null; }
-    public static function add($table, $data) { return 0; }
-    public static function update($table, $where, $data) { return false; }
-    public static function remove($table, $where, $limit = 1) { return false; }
-  }');
-}
+// Model viene del stub compartido cargado en run.php (tests/lib/ModelStub.php).
 
 require_once __DIR__ . '/../../plugins/Facturador/models/fProductoModel.php';
 

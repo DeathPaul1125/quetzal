@@ -1,5 +1,8 @@
 @php
-  $colors = theme_colors();
+  $colors   = theme_colors();
+  $branding = function_exists('branding_info') ? branding_info() : ['site_name' => defined('SITE_NAME') ? SITE_NAME : 'Quetzal', 'tagline' => '', 'login_welcome' => '¡Bienvenido!', 'login_subtitle' => 'Iniciá sesión.', 'logo' => '', 'login_bg' => '', 'favicon' => ''];
+  $logoUrl  = !empty($branding['logo'])    ? branding_asset_url($branding['logo'])    : (function_exists('get_quetzal_logo') ? get_quetzal_logo() : '');
+  $loginBg  = !empty($branding['login_bg']) ? branding_asset_url($branding['login_bg']) : '';
 @endphp
 <!DOCTYPE html>
 <html lang="{{ defined('SITE_LANG') ? SITE_LANG : 'es' }}" class="h-full">
@@ -7,9 +10,13 @@
   <meta charset="{{ defined('SITE_CHARSET') ? SITE_CHARSET : 'UTF-8' }}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <base href="{{ get_base_url() }}">
-  <title>{{ $title ?? 'Ingresar' }} — {{ defined('SITE_NAME') ? SITE_NAME : 'Quetzal' }}</title>
+  <title>{{ $title ?? 'Ingresar' }} — {{ $branding['site_name'] }}</title>
 
-  {!! function_exists('get_favicon') ? get_favicon() : '' !!}
+  @if(!empty($branding['favicon']))
+    <link rel="icon" type="image/{{ pathinfo($branding['favicon'], PATHINFO_EXTENSION) === 'svg' ? 'svg+xml' : pathinfo($branding['favicon'], PATHINFO_EXTENSION) }}" href="{{ branding_asset_url($branding['favicon']) }}">
+  @else
+    {!! function_exists('get_favicon') ? get_favicon() : '' !!}
+  @endif
 
   <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/preline@2.4.1/dist/preline.min.css">
@@ -40,16 +47,24 @@
 
   {{-- Panel izquierdo decorativo (solo desktop) --}}
   <div class="hidden lg:flex flex-col items-center justify-center p-10 relative overflow-hidden"
-       style="background: linear-gradient(135deg, {{ $colors['primary'] }} 0%, {{ $colors['primary_dark'] }} 100%);">
+       @if($loginBg)
+       style="background: linear-gradient(135deg, {{ $colors['primary'] }}cc 0%, {{ $colors['primary_dark'] }}cc 100%), url('{{ $loginBg }}') center/cover no-repeat;"
+       @else
+       style="background: linear-gradient(135deg, {{ $colors['primary'] }} 0%, {{ $colors['primary_dark'] }} 100%);"
+       @endif>
 
-    {{-- Patrón decorativo sutil --}}
-    <div class="absolute inset-0 opacity-[0.07]" style="background-image: radial-gradient(circle at 20% 30%, #fff 1px, transparent 2px), radial-gradient(circle at 80% 70%, #fff 1px, transparent 2px); background-size: 40px 40px;"></div>
+    {{-- Patrón decorativo sutil (solo si NO hay imagen custom) --}}
+    @if(!$loginBg)
+      <div class="absolute inset-0 opacity-[0.07]" style="background-image: radial-gradient(circle at 20% 30%, #fff 1px, transparent 2px), radial-gradient(circle at 80% 70%, #fff 1px, transparent 2px); background-size: 40px 40px;"></div>
+    @endif
 
     <div class="relative text-center text-white max-w-md">
-      <img src="{{ get_quetzal_logo() }}" alt="{{ defined('SITE_NAME') ? SITE_NAME : 'Quetzal' }}" class="w-28 h-28 mx-auto mb-6 bg-white/15 rounded-2xl p-3 backdrop-blur ring-1 ring-white/20">
-      <h1 class="text-3xl font-bold mb-3">{{ defined('SITE_NAME') ? SITE_NAME : 'Quetzal' }}</h1>
-      <p class="opacity-90 leading-relaxed">
-        {{ (defined('SITE_DESC') && SITE_DESC) ? SITE_DESC : 'Framework PHP ligero, flexible y fácil de implementar.' }}
+      @if($logoUrl)
+        <img src="{{ $logoUrl }}" alt="{{ $branding['site_name'] }}" class="w-28 h-28 mx-auto mb-6 bg-white/15 rounded-2xl p-3 backdrop-blur ring-1 ring-white/20 object-contain">
+      @endif
+      <h1 class="text-3xl font-bold mb-3 drop-shadow">{{ $branding['login_welcome'] ?: $branding['site_name'] }}</h1>
+      <p class="opacity-90 leading-relaxed drop-shadow">
+        {{ $branding['login_subtitle'] ?: ((defined('SITE_DESC') && SITE_DESC) ? SITE_DESC : 'Framework PHP ligero, flexible y fácil de implementar.') }}
       </p>
       <div class="mt-8 text-xs opacity-75">
         Powered by {{ defined('QUETZAL_NAME') ? QUETZAL_NAME : 'Quetzal' }} v{{ defined('QUETZAL_VERSION') ? QUETZAL_VERSION : '' }}
@@ -62,13 +77,15 @@
     <div class="w-full max-w-md">
 
       {{-- Logo mobile --}}
-      <div class="lg:hidden text-center mb-6">
-        <img src="{{ get_quetzal_logo() }}" alt="{{ defined('SITE_NAME') ? SITE_NAME : 'Quetzal' }}" class="w-16 h-16 mx-auto">
-      </div>
+      @if($logoUrl)
+        <div class="lg:hidden text-center mb-6">
+          <img src="{{ $logoUrl }}" alt="{{ $branding['site_name'] }}" class="w-16 h-16 mx-auto object-contain">
+        </div>
+      @endif
 
       <div class="bg-white rounded-2xl shadow-xl shadow-slate-200/60 ring-1 ring-slate-200/60 p-8">
-        <h2 class="text-2xl font-bold text-slate-800">Ingresar</h2>
-        <p class="text-sm text-slate-500 mt-1">Accede a tu panel de administración.</p>
+        <h2 class="text-2xl font-bold text-slate-800">{{ $branding['login_welcome'] ?: 'Ingresar' }}</h2>
+        <p class="text-sm text-slate-500 mt-1">{{ $branding['login_subtitle'] ?: 'Accede a tu panel de administración.' }}</p>
 
         @if(class_exists('Flasher'))
           <div class="mt-5">{!! Flasher::flash() !!}</div>
@@ -120,7 +137,7 @@
       </div>
 
       <p class="text-center text-xs text-slate-400 mt-6">
-        © {{ date('Y') }} {{ defined('SITE_NAME') ? SITE_NAME : 'Quetzal' }}
+        © {{ date('Y') }} {{ $branding['site_name'] }}
       </p>
     </div>
   </div>

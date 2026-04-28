@@ -10,6 +10,17 @@
     </div>
 
     <div class="flex items-center gap-2">
+      {{-- Botón APK --}}
+      @php $branding = isset($branding) ? $branding : (function_exists('branding_info') ? branding_info() : ['apk_url' => '', 'apk_enabled' => false]); @endphp
+      @if($branding['apk_enabled'] && !empty($branding['apk_url']))
+        <a href="{{ branding_asset_url($branding['apk_url']) }}" download
+           class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
+           title="Descargar app móvil (.apk)">
+          <i class="ri-android-fill"></i>
+          <span class="hidden md:inline">Descargar APK</span>
+        </a>
+      @endif
+
       {{-- Quick actions (ejemplo) --}}
       <a href="admin" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-slate-600 hover:bg-slate-100" title="Inicio">
         <i class="ri-home-line"></i>

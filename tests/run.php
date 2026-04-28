@@ -17,6 +17,10 @@
 chdir(__DIR__ . '/..');
 
 require __DIR__ . '/lib/Assert.php';
+// Stub global de Model — debe cargarse antes que cualquier test, para que el
+// `if (!class_exists("Model"))` de los tests viejos no instale un stub que
+// no respete $GLOBALS['_model_responses'].
+require __DIR__ . '/lib/ModelStub.php';
 
 $argv0 = $argv[0] ?? '';
 array_shift($argv);

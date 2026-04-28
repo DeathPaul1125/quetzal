@@ -149,6 +149,7 @@ class adminController extends Controller implements ControllerInterface
 
     $this->setTitle('Apariencia del sistema');
     $this->addToData('colors', theme_colors());
+    $this->addToData('branding', branding_info());
     $this->addToData('presets', [
       ['label' => 'Guatemala (default)', 'primary' => '#4997D0', 'dark' => '#2D6CA3'],
       ['label' => 'Verde quetzal',       'primary' => '#059669', 'dark' => '#065f46'],
@@ -164,7 +165,8 @@ class adminController extends Controller implements ControllerInterface
   }
 
   /**
-   * Guarda los colores elegidos en la tabla options.
+   * Guarda colores + identidad + assets de branding del sitio.
+   * Acepta multipart/form-data para uploads de logo, favicon e imagen de login.
    */
   function post_apariencia()
   {
@@ -176,14 +178,53 @@ class adminController extends Controller implements ControllerInterface
         throw new Exception(get_quetzal_message(0));
       }
 
-      $keys = ['primary', 'primary_dark', 'sidebar_bg', 'sidebar_fg'];
-      foreach ($keys as $key) {
+      // ===== Colores =====
+      $colorKeys = ['primary', 'primary_dark', 'sidebar_bg', 'sidebar_fg'];
+      foreach ($colorKeys as $key) {
         $val = trim((string)($_POST[$key] ?? ''));
         if ($val === '') continue;
         if (!preg_match('/^#[0-9a-f]{3,8}$/i', $val)) {
           throw new Exception(sprintf('El color "%s" no es un hex válido.', $key));
         }
         save_option('theme_' . $key, $val);
+      }
+
+      // ===== Identidad / textos =====
+      $textKeys = [
+        'site_name'      => 100,
+        'tagline'        => 200,
+        'footer_text'    => 300,
+        'login_welcome'  => 100,
+        'login_subtitle' => 200,
+        'apk_url'        => 500,
+      ];
+      foreach ($textKeys as $key => $maxLen) {
+        if (!array_key_exists($key, $_POST)) continue;
+        $val = trim((string)$_POST[$key]);
+        if (mb_strlen($val) > $maxLen) {
+          throw new Exception(sprintf('"%s" excede el largo permitido (%d).', $key, $maxLen));
+        }
+        save_option('branding_' . $key, $val);
+      }
+
+      // APK enabled toggle (checkbox)
+      save_option('branding_apk_enabled', !empty($_POST['apk_enabled']) ? '1' : '0');
+
+      // ===== Uploads (logo / favicon / login_bg) =====
+      $this->_handleBrandingUpload('logo',     ['png','jpg','jpeg','svg','webp'], 2 * 1024 * 1024);
+      $this->_handleBrandingUpload('favicon',  ['ico','png','svg'],               512 * 1024);
+      $this->_handleBrandingUpload('login_bg', ['jpg','jpeg','png','webp'],       4 * 1024 * 1024);
+
+      // ===== Reset assets ?  =====
+      foreach (['logo','favicon','login_bg'] as $asset) {
+        if (!empty($_POST['remove_' . $asset])) {
+          $current = get_option('branding_' . $asset);
+          if (is_string($current) && $current !== '' && strpos($current, 'assets/uploads/branding/') === 0) {
+            $abs = ROOT . str_replace('/', DIRECTORY_SEPARATOR, $current);
+            if (is_file($abs)) @unlink($abs);
+          }
+          save_option('branding_' . $asset, '');
+        }
       }
 
       Flasher::success('Apariencia actualizada.');
@@ -193,6 +234,51 @@ class adminController extends Controller implements ControllerInterface
       Flasher::error($e->getMessage());
       Redirect::back();
     }
+  }
+
+  /**
+   * Maneja el upload de un asset de branding (logo, favicon, login_bg).
+   * Guarda el archivo en assets/uploads/branding/ con un nombre único basado
+   * en el tipo y persiste el path relativo en options.
+   *
+   * Borra el asset anterior si existía.
+   */
+  private function _handleBrandingUpload(string $asset, array $allowedExt, int $maxBytes): void
+  {
+    if (empty($_FILES[$asset]) || ($_FILES[$asset]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+      return;
+    }
+    if ($_FILES[$asset]['error'] !== UPLOAD_ERR_OK) {
+      throw new Exception(sprintf('Error subiendo %s (código %d).', $asset, $_FILES[$asset]['error']));
+    }
+    if ($_FILES[$asset]['size'] > $maxBytes) {
+      throw new Exception(sprintf('%s pesa más de %d KB.', $asset, (int) ($maxBytes / 1024)));
+    }
+
+    $ext = strtolower(pathinfo($_FILES[$asset]['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, $allowedExt, true)) {
+      throw new Exception(sprintf('Extensión inválida para %s. Permitidas: %s.', $asset, implode(', ', $allowedExt)));
+    }
+
+    $dirAbs = ROOT . 'assets' . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'branding';
+    if (!is_dir($dirAbs) && !mkdir($dirAbs, 0775, true) && !is_dir($dirAbs)) {
+      throw new Exception('No se pudo crear el directorio de uploads.');
+    }
+
+    $filename = $asset . '_' . substr(bin2hex(random_bytes(4)), 0, 6) . '.' . $ext;
+    $targetAbs = $dirAbs . DIRECTORY_SEPARATOR . $filename;
+    if (!move_uploaded_file($_FILES[$asset]['tmp_name'], $targetAbs)) {
+      throw new Exception(sprintf('No se pudo guardar %s en disco.', $asset));
+    }
+
+    // Borrar el anterior si era nuestro
+    $previous = get_option('branding_' . $asset);
+    if (is_string($previous) && $previous !== '' && strpos($previous, 'assets/uploads/branding/') === 0) {
+      $prevAbs = ROOT . str_replace('/', DIRECTORY_SEPARATOR, $previous);
+      if (is_file($prevAbs)) @unlink($prevAbs);
+    }
+
+    save_option('branding_' . $asset, 'assets/uploads/branding/' . $filename);
   }
 
   ////////////////////////////////////////////////////

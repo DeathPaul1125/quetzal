@@ -3,8 +3,9 @@
   Uso: @extends('includes.admin.layout')
 --}}
 @php
-  $colors = theme_colors();
-  $user   = get_user();
+  $colors   = theme_colors();
+  $branding = function_exists('branding_info') ? branding_info() : ['site_name' => defined('SITE_NAME') ? SITE_NAME : 'Quetzal', 'footer_text' => '', 'favicon' => '', 'logo' => '', 'apk_url' => '', 'apk_enabled' => false];
+  $user     = get_user();
   $roleSlug = $user['role'] ?? 'guest';
 @endphp
 <!DOCTYPE html>
@@ -13,9 +14,13 @@
   <meta charset="{{ defined('SITE_CHARSET') ? SITE_CHARSET : 'UTF-8' }}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <base href="{{ get_base_url() }}">
-  <title>@yield('title', $title ?? 'Administración') — {{ defined('SITE_NAME') ? SITE_NAME : 'Quetzal' }}</title>
+  <title>@yield('title', $title ?? 'Administración') — {{ $branding['site_name'] }}</title>
 
-  {!! function_exists('get_favicon') ? get_favicon() : '' !!}
+  @if(!empty($branding['favicon']))
+    <link rel="icon" type="image/{{ pathinfo($branding['favicon'], PATHINFO_EXTENSION) === 'svg' ? 'svg+xml' : pathinfo($branding['favicon'], PATHINFO_EXTENSION) }}" href="{{ branding_asset_url($branding['favicon']) }}">
+  @else
+    {!! function_exists('get_favicon') ? get_favicon() : '' !!}
+  @endif
 
   {{-- Tailwind + Preline --}}
   <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
@@ -132,8 +137,12 @@
     </main>
 
     <footer class="q-footer border-t border-slate-200 bg-white py-4 px-6 text-center text-xs text-slate-500">
-      © {{ date('Y') }} {{ defined('SITE_NAME') ? SITE_NAME : 'Quetzal' }}
-      · {{ defined('QUETZAL_NAME') ? QUETZAL_NAME : 'Quetzal' }} v{{ defined('QUETZAL_VERSION') ? QUETZAL_VERSION : '' }}
+      @if(!empty($branding['footer_text']))
+        {{ $branding['footer_text'] }}
+      @else
+        © {{ date('Y') }} {{ $branding['site_name'] }}
+        · {{ defined('QUETZAL_NAME') ? QUETZAL_NAME : 'Quetzal' }} v{{ defined('QUETZAL_VERSION') ? QUETZAL_VERSION : '' }}
+      @endif
     </footer>
   </div>
 </div>

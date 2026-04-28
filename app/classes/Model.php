@@ -52,10 +52,10 @@ class Model extends Db {
 	* @return bool
 	**/
 	public static function add(string $table, array $params)
-	{	
+	{
 		$cols         = "";
 		$placeholders = "";
-		
+
 		foreach ($params as $key => $value) {
 			$cols         .= "{$key} ,";
 			$placeholders .= ":{$key} ,";
@@ -63,15 +63,21 @@ class Model extends Db {
 
 		$cols         = substr($cols, 0 , -1);
 		$placeholders = substr($placeholders, 0 , -1);
-		$stmt         = 
+		$stmt         =
 		"INSERT INTO {$table}
 		({$cols})
 		VALUES
 		({$placeholders})
 		";
-		
+
 		// Manda el statement a query()
 		if ($id = parent::query($stmt , $params)) {
+			// Hook para auditoría / observers: 'model_after_add'.
+			// Recibe ['table','data','row_id']. Listeners no deben tirar.
+			if (class_exists('QuetzalHookManager')) {
+				try { QuetzalHookManager::getHookData('model_after_add', ['table' => $table, 'data' => $params, 'row_id' => $id]); }
+				catch (\Throwable $e) { /* no romper la operación */ }
+			}
 			return $id;
 		}
 
@@ -109,11 +115,23 @@ class Model extends Db {
 
 		$stmt = "UPDATE $table SET $placeholders WHERE $col";
 
+		// Hook 'model_before_update': los listeners pueden capturar el "antes"
+		// haciendo SELECT con $haystack. Recibe ['table','where','data'].
+		if (class_exists('QuetzalHookManager')) {
+			try { QuetzalHookManager::getHookData('model_before_update', ['table' => $table, 'where' => $haystack, 'data' => $params]); }
+			catch (\Throwable $e) { /* no romper */ }
+		}
+
 		// Manda el statement a query()
 		if (!parent::query($stmt , array_merge($params,$haystack))) {
       return false;
 		}
-    
+
+		if (class_exists('QuetzalHookManager')) {
+			try { QuetzalHookManager::getHookData('model_after_update', ['table' => $table, 'where' => $haystack, 'data' => $params]); }
+			catch (\Throwable $e) { /* no romper */ }
+		}
+
     return true;
   }
   
@@ -150,11 +168,17 @@ class Model extends Db {
 		// Query creation
 		$stmt = "DELETE FROM $table {$cols_values}{$limits}";
 
+		// Hook 'model_before_remove': listeners pueden cargar el row antes de borrarlo.
+		if (class_exists('QuetzalHookManager')) {
+			try { QuetzalHookManager::getHookData('model_before_remove', ['table' => $table, 'where' => $params, 'limit' => $limit]); }
+			catch (\Throwable $e) { /* no romper */ }
+		}
+
 		// Calling DB and querying
 		if (!parent::query($stmt , $params)) {
       return false;
 		}
-    
+
     return true;
 	}
 

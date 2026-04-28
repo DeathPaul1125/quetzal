@@ -96,11 +96,17 @@
 @endphp
 
 <aside id="q-sidebar" class="hidden lg:flex lg:flex-col w-full lg:w-64 flex-shrink-0">
+  @php
+    $sb_branding = isset($branding) ? $branding : (function_exists('branding_info') ? branding_info() : ['site_name' => defined('SITE_NAME') ? SITE_NAME : 'Quetzal', 'tagline' => 'Panel admin', 'logo' => '']);
+    $sb_logo = !empty($sb_branding['logo']) ? branding_asset_url($sb_branding['logo']) : (function_exists('get_quetzal_logo') ? get_quetzal_logo() : '');
+  @endphp
   <div class="px-6 py-5 flex items-center gap-3 border-b border-white/10">
-    <img src="{{ get_quetzal_logo() }}" alt="{{ defined('SITE_NAME') ? SITE_NAME : 'Quetzal' }}" class="w-9 h-9 rounded bg-white/5 p-1">
+    @if($sb_logo)
+      <img src="{{ $sb_logo }}" alt="{{ $sb_branding['site_name'] }}" class="w-9 h-9 rounded bg-white/5 p-1 object-contain">
+    @endif
     <div class="leading-tight">
-      <div class="text-sm font-semibold">{{ defined('SITE_NAME') ? SITE_NAME : 'Quetzal' }}</div>
-      <div class="text-xs opacity-60">Panel admin</div>
+      <div class="text-sm font-semibold">{{ $sb_branding['site_name'] }}</div>
+      <div class="text-xs opacity-60">{{ $sb_branding['tagline'] ?: 'Panel admin' }}</div>
     </div>
   </div>
 

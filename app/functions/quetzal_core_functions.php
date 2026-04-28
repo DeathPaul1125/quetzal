@@ -331,6 +331,53 @@ function theme_colors(): array
 }
 
 /**
+ * Branding del sitio: nombre, tagline, footer, logos. Cada valor cae en su
+ * default si no está guardado como option.
+ *
+ * Las claves "branding_*" persisten en options. Los archivos suben a
+ * assets/uploads/branding/ y se referencian relativamente desde la raíz del
+ * sitio.
+ *
+ * @return array
+ */
+function branding_info(): array
+{
+	$siteName = defined('SITE_NAME') ? SITE_NAME : 'Quetzal';
+
+	$logo       = get_option('branding_logo')       ?: '';
+	$favicon    = get_option('branding_favicon')    ?: '';
+	$loginBg    = get_option('branding_login_bg')   ?: '';
+	$apkUrl     = get_option('branding_apk_url')    ?: 'assets/downloads/quetzal-shell-v1.0.0.apk';
+	$apkEnabled = (string) (get_option('branding_apk_enabled') ?? '1') === '1';
+
+	return [
+		'site_name'     => (string) (get_option('branding_site_name')   ?: $siteName),
+		'tagline'       => (string) (get_option('branding_tagline')     ?: 'Panel de administración'),
+		'footer_text'   => (string) (get_option('branding_footer_text') ?: ''),
+		'login_welcome' => (string) (get_option('branding_login_welcome') ?: '¡Bienvenido de nuevo!'),
+		'login_subtitle'=> (string) (get_option('branding_login_subtitle') ?: 'Iniciá sesión para continuar.'),
+		'logo'          => $logo,     // path relativo (assets/uploads/branding/x.png) o URL
+		'favicon'       => $favicon,  // idem
+		'login_bg'      => $loginBg,  // idem
+		'apk_url'       => $apkUrl,
+		'apk_enabled'   => $apkEnabled,
+	];
+}
+
+/**
+ * Helper de URL absoluta de un asset de branding (logo/favicon/login_bg).
+ * Si el valor ya es URL absoluta, lo devuelve tal cual. Si es relativo,
+ * antepone el base url. Si está vacío, devuelve string vacío.
+ */
+function branding_asset_url(string $path): string
+{
+	if ($path === '') return '';
+	if (preg_match('#^https?://#i', $path)) return $path;
+	$base = function_exists('get_base_url') ? rtrim(get_base_url(), '/') . '/' : '';
+	return $base . ltrim($path, '/');
+}
+
+/**
  * Retorna el path absoluto del archivo sidebar.json.
  */
 function sidebar_config_file(): string
