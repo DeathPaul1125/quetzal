@@ -1441,10 +1441,65 @@ class adminController extends Controller implements ControllerInterface
   }
 
   /**
-   * Agrupa los permisos de la BD por el plugin que los declaró. Los permisos
-   * que no son aportados por ningún plugin habilitado quedan en "Core".
+   * Acciones estándar reconocidas + sinónimos. El orden define las columnas
+   * de la matriz de permisos.
+   */
+  public const PERM_ACTIONS = [
+    'ver'       => ['label' => 'Ver',       'icon' => 'ri-eye-line',          'syns' => ['ver','read','view','list','show','index','consultar','leer']],
+    'crear'     => ['label' => 'Crear',     'icon' => 'ri-add-line',          'syns' => ['crear','create','new','add','store','registrar','agregar']],
+    'editar'    => ['label' => 'Editar',    'icon' => 'ri-edit-line',         'syns' => ['editar','update','edit','modificar','actualizar','write']],
+    'eliminar'  => ['label' => 'Eliminar',  'icon' => 'ri-delete-bin-line',   'syns' => ['eliminar','delete','remove','borrar','destroy']],
+    'descargar' => ['label' => 'Descargar', 'icon' => 'ri-download-2-line',   'syns' => ['descargar','download','export','exportar','print','imprimir','pdf','excel','csv']],
+  ];
+
+  /**
+   * Parsea un slug y devuelve (recurso, accion_key) si reconoce una acción
+   * estándar. Soporta:
+   *   - recurso.accion (caex.guias.crear → recurso=caex.guias, accion=crear)
+   *   - recurso-accion (users-read → recurso=users, accion=ver)
+   *   - accion-recurso (read-users → recurso=users, accion=ver)
+   *   - recurso_accion (legacy)
    *
-   * @return array<string, array> ['Core' => ['icon' => 'ri-x', 'description' => '...', 'perms' => [...]], ...]
+   * @return array{recurso:?string, accion_key:?string}
+   */
+  public static function parsePermissionSlug(string $slug): array
+  {
+    $slug = strtolower(trim($slug));
+    if ($slug === '') return ['recurso' => null, 'accion_key' => null];
+
+    $tryAction = function (string $token) {
+      foreach (self::PERM_ACTIONS as $key => $meta) {
+        if (in_array($token, $meta['syns'], true)) return $key;
+      }
+      return null;
+    };
+
+    foreach (['.', '-', '_'] as $sep) {
+      if (strpos($slug, $sep) === false) continue;
+      $lastPos = strrpos($slug, $sep);
+      $left  = substr($slug, 0, $lastPos);
+      $right = substr($slug, $lastPos + 1);
+      if ($k = $tryAction($right)) return ['recurso' => $left,  'accion_key' => $k];
+      if ($k = $tryAction($left))  return ['recurso' => $right, 'accion_key' => $k];
+      $parts = preg_split('/[\.\-_]/', $slug);
+      if (count($parts) >= 3) {
+        for ($idx = count($parts) - 2; $idx >= 0; $idx--) {
+          if ($k = $tryAction($parts[$idx])) {
+            $rest = $parts; unset($rest[$idx]);
+            return ['recurso' => implode('.', array_values($rest)), 'accion_key' => $k];
+          }
+        }
+      }
+      break;
+    }
+    return ['recurso' => null, 'accion_key' => null];
+  }
+
+  /**
+   * Agrupa los permisos por plugin Y arma una matriz [recurso][accion] por
+   * cada uno. Los permisos sin acción reconocible se devuelven como `unparsed`.
+   *
+   * @return array<string, array> Estructura por plugin con `perms`, `matrix`, `unparsed`.
    */
   private function _groupPermissionsByPlugin(array $allPerms): array
   {
@@ -1507,7 +1562,25 @@ class adminController extends Controller implements ControllerInterface
       }
     }
 
-    // Quitar grupos vacíos (Core puede quedar vacío si todo es de plugin)
+    // Construir la matriz [recurso][accion_key] por cada grupo
+    foreach ($groups as $gName => &$g) {
+      $g['matrix']   = [];
+      $g['unparsed'] = [];
+      foreach ($g['perms'] as $p) {
+        $parsed = self::parsePermissionSlug((string)$p['slug']);
+        if ($parsed['accion_key'] && $parsed['recurso']) {
+          $resource = $parsed['recurso'];
+          $g['matrix'][$resource][$parsed['accion_key']] = $p;
+        } else {
+          $g['unparsed'][] = $p;
+        }
+      }
+      // Ordenar recursos alfabéticamente
+      ksort($g['matrix']);
+    }
+    unset($g);
+
+    // Quitar grupos vacíos
     foreach ($groups as $k => $g) {
       if (empty($g['perms'])) unset($groups[$k]);
     }
