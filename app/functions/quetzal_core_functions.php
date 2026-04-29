@@ -347,7 +347,7 @@ function branding_info(): array
 	$logo       = get_option('branding_logo')       ?: '';
 	$favicon    = get_option('branding_favicon')    ?: '';
 	$loginBg    = get_option('branding_login_bg')   ?: '';
-	$apkUrl     = get_option('branding_apk_url')    ?: 'assets/downloads/quetzal-shell-v1.0.0.apk';
+	$apkUrl     = get_option('branding_apk_url')    ?: 'assets/downloads/quetzal-shell-v1.1.0.apk';
 	$apkEnabled = (string) (get_option('branding_apk_enabled') ?? '1') === '1';
 
 	return [
