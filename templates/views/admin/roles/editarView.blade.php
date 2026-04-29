@@ -75,6 +75,16 @@
             <button type="button" data-q-perms-select="none" class="px-3 py-1 rounded border border-slate-200 hover:bg-slate-50 text-slate-500">Ninguno</button>
           </div>
         </div>
+        <div class="mt-3 pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-500">
+          <div class="flex items-center gap-2">
+            <input type="checkbox" checked disabled class="rounded border-slate-300 text-primary">
+            <span><strong>Existente:</strong> permiso registrado en la base.</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="relative inline-flex"><input type="checkbox" disabled class="rounded border-amber-400 text-amber-500 opacity-50"><span class="absolute top-0 right-0 text-[9px] font-bold text-amber-500 pointer-events-none">+</span></span>
+            <span><strong>Propuesto (con +):</strong> al marcarlo se <strong>crea</strong> el permiso y se asigna.</span>
+          </div>
+        </div>
       </div>
 
       <div class="space-y-4" id="q-perms-grid">
@@ -146,7 +156,18 @@
                                        class="q-perm-cb rounded border-slate-300 text-primary focus:ring-primary">
                               </label>
                             @else
-                              <span class="text-slate-200">—</span>
+                              {{-- Permiso propuesto: NO existe en BD. Al marcar y guardar se crea + asigna. --}}
+                              @php $proposedSlug = $resource . '.' . $aKey; @endphp
+                              <label class="inline-flex items-center justify-center w-8 h-8 rounded cursor-pointer hover:bg-amber-100 transition relative group"
+                                     title="«{{ $proposedSlug }}» todavía no existe. Al marcarlo y guardar se crea el permiso y se asigna a este role.">
+                                <input type="checkbox" name="permisos_nuevos[]" value="{{ $proposedSlug }}"
+                                       data-q-col-key="{{ $groupKey }}::{{ $aKey }}"
+                                       data-q-row-key="{{ $rowKey }}"
+                                       data-q-group-key="{{ $groupKey }}"
+                                       data-q-proposed="1"
+                                       class="q-perm-cb rounded border-amber-400 text-amber-500 focus:ring-amber-400 opacity-30 group-hover:opacity-100 transition">
+                                <span class="absolute top-0 right-0 text-[9px] font-bold text-amber-500 group-hover:opacity-0 transition pointer-events-none">+</span>
+                              </label>
                             @endif
                           </td>
                         @endforeach

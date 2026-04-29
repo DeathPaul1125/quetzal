@@ -1639,11 +1639,11 @@ class adminController extends Controller implements ControllerInterface
         throw new Exception(get_quetzal_message(0));
       }
 
-      $id        = (int) ($_POST['id'] ?? 0);
-      $nombre    = sanitize_input($_POST['nombre'] ?? '');
-      $slug      = sanitize_input($_POST['slug']   ?? '');
-      $permSlugs = $_POST['permisos'] ?? [];
-      if (!is_array($permSlugs)) $permSlugs = [];
+      $id            = (int) ($_POST['id'] ?? 0);
+      $nombre        = sanitize_input($_POST['nombre'] ?? '');
+      $slug          = sanitize_input($_POST['slug']   ?? '');
+      $permSlugs     = is_array($_POST['permisos']        ?? null) ? $_POST['permisos']        : [];
+      $proposedSlugs = is_array($_POST['permisos_nuevos'] ?? null) ? $_POST['permisos_nuevos'] : [];
 
       if (!$role = Model::list('quetzal_roles', ['id' => $id], 1)) {
         throw new Exception('No existe el role.');
@@ -1665,7 +1665,50 @@ class adminController extends Controller implements ControllerInterface
       $mgr = new QuetzalRoleManager($role['slug']);
       $currentPerms = array_map(fn($p) => $p['slug'], $mgr->getPermissions() ?: []);
 
-      // Validar y limpiar los slugs recibidos del form
+      // ===========================================================
+      //  Crear permisos PROPUESTOS (los que el usuario marcó en celdas
+      //  vacías de la matriz). Cada uno tiene formato "recurso.accion_key".
+      //  Después de crearlos los agregamos a $permSlugs para que el flujo
+      //  normal los asigne.
+      // ===========================================================
+      $createdPerms = [];
+      $createFailed = [];
+      foreach ($proposedSlugs as $rawSlug) {
+        $slugTry = strtolower(trim((string)$rawSlug));
+        if ($slugTry === '' || !preg_match('/^[a-z0-9_\-\.]+$/', $slugTry)) {
+          $createFailed[] = $rawSlug; continue;
+        }
+        // Si ya existe (carrera entre tabs / doble click), no falla
+        if (Model::list('quetzal_permisos', ['slug' => $slugTry], 1)) {
+          $permSlugs[] = $slugTry; continue;
+        }
+        // Generar nombre human-readable
+        $parts = explode('.', $slugTry);
+        $accionKey = end($parts);
+        $resource  = implode('.', array_slice($parts, 0, -1)) ?: $slugTry;
+        $accionLbl = self::PERM_ACTIONS[$accionKey]['label'] ?? ucfirst($accionKey);
+        $nombrePerm = sprintf('%s %s', $accionLbl, ucfirst(str_replace(['.', '-', '_'], ' ', $resource)));
+        $descPerm   = sprintf('Permite %s sobre el recurso %s. Creado automáticamente desde la matriz.', strtolower($accionLbl), $resource);
+
+        try {
+          $newId = Model::add('quetzal_permisos', [
+            'nombre'      => mb_substr($nombrePerm, 0, 100),
+            'slug'        => $slugTry,
+            'descripcion' => mb_substr($descPerm, 0, 255),
+            'creado'      => function_exists('now') ? now() : date('Y-m-d H:i:s'),
+          ]);
+          if ($newId) {
+            $createdPerms[] = $slugTry;
+            $permSlugs[]    = $slugTry;
+          } else {
+            $createFailed[] = $slugTry;
+          }
+        } catch (\Throwable $e) {
+          $createFailed[] = $slugTry;
+        }
+      }
+
+      // Validar y limpiar los slugs recibidos del form (incluye los recién creados)
       $cleanSlugs = [];
       $invalidSlugs = [];
       $missingFromDb = [];
@@ -1683,6 +1726,7 @@ class adminController extends Controller implements ControllerInterface
         }
         $cleanSlugs[] = $slugTry;
       }
+      $cleanSlugs = array_values(array_unique($cleanSlugs));
 
       // Quitar los que ya no están
       $denied = 0; $denyFailed = [];
@@ -1707,8 +1751,14 @@ class adminController extends Controller implements ControllerInterface
       if (!empty($missingFromDb))  $problems[] = sprintf('%d permiso(s) no existen en BD: %s', count($missingFromDb), implode(', ', array_slice($missingFromDb, 0, 5)));
       if (!empty($allowFailed))    $problems[] = sprintf('%d no se pudieron asignar: %s', count($allowFailed), implode(', ', array_slice($allowFailed, 0, 5)));
       if (!empty($denyFailed))     $problems[] = sprintf('%d no se pudieron remover: %s', count($denyFailed), implode(', ', array_slice($denyFailed, 0, 5)));
+      if (!empty($createFailed))   $problems[] = sprintf('%d permiso(s) propuestos no se pudieron crear: %s', count($createFailed), implode(', ', array_slice($createFailed, 0, 5)));
+
+      $extras = [];
+      if (!empty($createdPerms))   $extras[] = sprintf('%d permiso(s) nuevo(s) creado(s) y asignado(s)', count($createdPerms));
 
       $summary = sprintf('Role actualizado: +%d asignados · -%d removidos.', $allowed, $denied);
+      if (!empty($extras)) $summary .= ' ' . implode(' · ', $extras) . '.';
+
       if (empty($problems)) {
         Flasher::success($summary);
       } else {
