@@ -52,7 +52,7 @@
           <i class="ri-key-2-line text-primary"></i> Permisos asignados
         </h3>
         <div class="flex items-center gap-2 text-xs">
-          <button type="button" data-q-perms-select="all" class="text-primary hover:underline">Seleccionar todos</button>
+          <button type="button" data-q-perms-select="all"  class="text-primary hover:underline">Seleccionar todos</button>
           <span class="text-slate-300">·</span>
           <button type="button" data-q-perms-select="none" class="text-slate-500 hover:underline">Ninguno</button>
         </div>
@@ -60,23 +60,44 @@
 
       @if(empty($allPerms))
         <p class="text-sm text-slate-500 text-center py-6">
-          No hay permisos registrados. <a href="admin/crear_permiso" class="text-primary hover:underline">Crea uno primero</a>.
+          No hay permisos registrados. Andá a
+          <a href="admin/permisos" class="text-primary hover:underline">/admin/permisos</a> y hacé clic en
+          "Sincronizar permisos" para descubrir los aportados por plugins.
         </p>
       @else
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5" id="q-perms-grid">
-          @foreach($allPerms as $p)
-            @php $checked = in_array($p['slug'], $rolePerms, true); @endphp
-            <label class="flex items-start gap-3 p-3 rounded-lg border border-slate-200 hover:border-primary hover:bg-slate-50 transition cursor-pointer {{ $checked ? 'border-primary bg-primary/5' : '' }}">
-              <input type="checkbox" name="permisos[]" value="{{ $p['slug'] }}" {{ $checked ? 'checked' : '' }}
-                     class="mt-0.5 rounded border-slate-300 text-primary focus:ring-primary">
-              <div class="flex-1 min-w-0">
-                <div class="text-sm font-medium text-slate-800">{{ $p['nombre'] }}</div>
-                <div class="text-xs text-slate-500 font-mono">{{ $p['slug'] }}</div>
-                @if(!empty($p['descripcion']))
-                  <div class="text-xs text-slate-500 mt-1">{{ $p['descripcion'] }}</div>
-                @endif
+        <div class="space-y-4" id="q-perms-grid">
+          @foreach($permsByPlugin as $groupName => $group)
+            @php
+              $groupPerms      = $group['perms'];
+              $groupChecked    = array_filter($groupPerms, fn($p) => in_array($p['slug'], $rolePerms, true));
+              $groupKey        = 'q-pg-' . preg_replace('/[^a-z0-9]+/i', '-', strtolower($groupName));
+            @endphp
+            <details class="rounded-lg border border-slate-200 overflow-hidden" {{ $groupName !== 'Core' ? 'open' : '' }}>
+              <summary class="cursor-pointer flex items-center gap-3 px-4 py-3 bg-slate-50 hover:bg-slate-100 transition">
+                <i class="{{ $group['icon'] ?? 'ri-folder-line' }} text-primary text-lg"></i>
+                <div class="flex-1">
+                  <div class="font-semibold text-slate-800 text-sm">{{ $groupName }}</div>
+                  @if(!empty($group['description']))<div class="text-xs text-slate-500 mt-0.5">{{ $group['description'] }}</div>@endif
+                </div>
+                <span class="text-xs font-mono px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600">{{ count($groupChecked) }} / {{ count($groupPerms) }}</span>
+                <button type="button" data-q-group-toggle="{{ $groupKey }}" class="text-xs text-primary hover:underline" onclick="event.preventDefault();event.stopPropagation();">Marcar todos</button>
+                <i class="ri-arrow-down-s-line text-slate-400 text-lg"></i>
+              </summary>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-4 q-perm-group" data-q-group-key="{{ $groupKey }}">
+                @foreach($groupPerms as $p)
+                  @php $checked = in_array($p['slug'], $rolePerms, true); @endphp
+                  <label class="flex items-start gap-3 p-3 rounded-lg border border-slate-200 hover:border-primary hover:bg-slate-50 transition cursor-pointer {{ $checked ? 'border-primary bg-primary/5' : '' }}">
+                    <input type="checkbox" name="permisos[]" value="{{ $p['slug'] }}" {{ $checked ? 'checked' : '' }}
+                           class="mt-0.5 rounded border-slate-300 text-primary focus:ring-primary">
+                    <div class="flex-1 min-w-0">
+                      <div class="text-sm font-medium text-slate-800">{{ $p['nombre'] }}</div>
+                      <div class="text-xs text-slate-500 font-mono break-all">{{ $p['slug'] }}</div>
+                      @if(!empty($p['descripcion']))<div class="text-xs text-slate-500 mt-1">{{ $p['descripcion'] }}</div>@endif
+                    </div>
+                  </label>
+                @endforeach
               </div>
-            </label>
+            </details>
           @endforeach
         </div>
       @endif
@@ -96,10 +117,25 @@
 (function() {
   const grid = document.getElementById('q-perms-grid');
   if (!grid) return;
+
+  // Seleccionar/desmarcar TODOS
   document.querySelectorAll('[data-q-perms-select]').forEach(btn => {
     btn.addEventListener('click', () => {
       const val = btn.dataset.qPermsSelect === 'all';
       grid.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = val);
+    });
+  });
+
+  // "Marcar todos" por grupo (toggle inteligente)
+  document.querySelectorAll('[data-q-group-toggle]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const key  = btn.dataset.qGroupToggle;
+      const sec  = grid.querySelector('.q-perm-group[data-q-group-key="' + key + '"]');
+      if (!sec) return;
+      const all  = sec.querySelectorAll('input[type=checkbox]');
+      const some = Array.from(all).some(cb => cb.checked);
+      all.forEach(cb => cb.checked = !some);
     });
   });
 })();

@@ -45,6 +45,7 @@
     ['label' => 'Generador',    'icon' => 'ri-terminal-box-fill', 'iconColor' => 'text-slate-300',   'url' => 'admin/generador',    'controller' => 'admin', 'method' => 'generador',                                                                        'permission' => 'admin-access'],
     ['label' => 'Migraciones',  'icon' => 'ri-database-2-fill',   'iconColor' => 'text-cyan-400',    'url' => 'admin/migraciones',  'controller' => 'admin', 'method' => 'migraciones',                                                                      'permission' => 'admin-access'],
     ['label' => 'Apariencia',   'icon' => 'ri-palette-fill',      'iconColor' => 'text-pink-400',    'url' => 'admin/apariencia',   'controller' => 'admin', 'method' => 'apariencia',                                                                       'permission' => 'admin-access'],
+    ['label' => 'Documentación','icon' => 'ri-book-3-fill',       'iconColor' => 'text-violet-400',  'url' => 'documentacion',      'controller' => 'documentacion', 'method' => 'index',                                                                  'permission' => null],
     ['label' => 'Perfil',       'icon' => 'ri-id-card-fill',      'iconColor' => 'text-indigo-400',  'url' => 'admin/perfil',       'controller' => 'admin', 'method' => 'perfil',                                                                            'permission' => null],
   ];
 
@@ -150,45 +151,52 @@
 <script>
 (function() {
   'use strict';
-  const STORAGE_KEY = 'q-sidebar-collapsed';
+  // Modo accordion: solo UN grupo expandido a la vez. La key guardada es el
+  // grupo abierto (string) o null si todos colapsados.
+  const STORAGE_KEY = 'q-sidebar-open-group';
 
-  // Cargar estado previo
-  let collapsed = {};
-  try {
-    collapsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-  } catch (e) { collapsed = {}; }
+  const groups = Array.from(document.querySelectorAll('#q-sidebar-nav .q-group'));
+  if (!groups.length) return;
 
-  // Inicializar cada grupo
-  document.querySelectorAll('#q-sidebar-nav .q-group').forEach(group => {
-    const key       = group.dataset.groupKey;
-    const hasActive = group.dataset.hasActive === '1';
-    const items     = group.querySelector('.q-group-items');
-    const chevron   = group.querySelector('.q-group-chevron');
+  // 1) Identificar el grupo activo por la URL actual (siempre tiene precedencia)
+  const activeGroup = groups.find(g => g.dataset.hasActive === '1');
 
-    // Reglas: si tiene item activo → forzar expandido (independiente del guardado)
-    //         si no, respetar el estado guardado (default expandido)
-    const isCollapsed = hasActive ? false : !!collapsed[key];
+  // 2) Si no hay activo, leer el último abierto desde localStorage
+  let openKey = null;
+  try { openKey = localStorage.getItem(STORAGE_KEY); } catch (e) {}
 
-    if (isCollapsed) {
-      items.style.display = 'none';
-      if (chevron) chevron.style.transform = 'rotate(-90deg)';
-    }
-  });
+  // 3) Estado inicial: solo uno abierto (o ninguno)
+  const initialOpen = activeGroup
+    ? activeGroup.dataset.groupKey
+    : (openKey && groups.some(g => g.dataset.groupKey === openKey) ? openKey : (groups[0]?.dataset.groupKey || null));
 
-  // Toggle
+  function setExpanded(group, expanded) {
+    const items   = group.querySelector('.q-group-items');
+    const chevron = group.querySelector('.q-group-chevron');
+    if (items)   items.style.display = expanded ? '' : 'none';
+    if (chevron) chevron.style.transform = expanded ? '' : 'rotate(-90deg)';
+    group.classList.toggle('q-group-open', expanded);
+  }
+
+  groups.forEach(g => setExpanded(g, g.dataset.groupKey === initialOpen));
+
+  // 4) Click en cualquier toggle → cierra los demás y deja solo ese abierto
+  //    Si el clickeado ya estaba abierto, lo cierra (todos colapsados).
   document.querySelectorAll('#q-sidebar-nav .q-group-toggle').forEach(btn => {
     btn.addEventListener('click', () => {
       const group   = btn.closest('.q-group');
       const key     = group.dataset.groupKey;
-      const items   = group.querySelector('.q-group-items');
-      const chevron = group.querySelector('.q-group-chevron');
+      const isOpen  = group.classList.contains('q-group-open');
 
-      const willCollapse = items.style.display !== 'none';
-      items.style.display = willCollapse ? 'none' : '';
-      if (chevron) chevron.style.transform = willCollapse ? 'rotate(-90deg)' : '';
-
-      collapsed[key] = willCollapse;
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(collapsed)); } catch (e) {}
+      // Cerrar todos
+      groups.forEach(g => setExpanded(g, false));
+      // Si estaba cerrado, abrirlo
+      if (!isOpen) {
+        setExpanded(group, true);
+        try { localStorage.setItem(STORAGE_KEY, key); } catch (e) {}
+      } else {
+        try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+      }
     });
   });
 })();

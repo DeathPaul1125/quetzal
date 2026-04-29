@@ -1427,13 +1427,91 @@ class adminController extends Controller implements ControllerInterface
     $rolePerms   = array_map(fn($p) => $p['slug'], $mgr->getPermissions() ?: []);
     $isProtected = in_array($role['slug'], ['admin', 'developer', 'worker'], true);
 
+    // Agrupar permisos por plugin que los declaró (vía hook plugin_permissions)
+    $permsByPlugin = $this->_groupPermissionsByPlugin($allPerms);
+
     $this->setTitle(sprintf('Editar role: %s', $role['nombre']));
-    $this->addToData('role'        , $role);
-    $this->addToData('allPerms'    , $allPerms);
-    $this->addToData('rolePerms'   , $rolePerms);
-    $this->addToData('isProtected' , $isProtected);
+    $this->addToData('role'         , $role);
+    $this->addToData('allPerms'     , $allPerms);
+    $this->addToData('rolePerms'    , $rolePerms);
+    $this->addToData('permsByPlugin', $permsByPlugin);
+    $this->addToData('isProtected'  , $isProtected);
     $this->setView('roles/editar');
     $this->render();
+  }
+
+  /**
+   * Agrupa los permisos de la BD por el plugin que los declaró. Los permisos
+   * que no son aportados por ningún plugin habilitado quedan en "Core".
+   *
+   * @return array<string, array> ['Core' => ['icon' => 'ri-x', 'description' => '...', 'perms' => [...]], ...]
+   */
+  private function _groupPermissionsByPlugin(array $allPerms): array
+  {
+    $groups = [
+      'Core' => ['icon' => 'ri-shield-flash-fill', 'description' => 'Permisos del núcleo del sistema (no provienen de plugins).', 'perms' => []],
+    ];
+
+    // Mapa slug → plugin (a partir del hook plugin_permissions)
+    $slugToPlugin = [];
+    if (class_exists('QuetzalHookManager')) {
+      foreach (QuetzalHookManager::getHookData('plugin_permissions') as $list) {
+        if (!is_array($list)) continue;
+        foreach ($list as $p) {
+          if (!is_array($p) || empty($p['slug'])) continue;
+          $slugToPlugin[$p['slug']] = $p['_plugin'] ?? null;
+        }
+      }
+    }
+
+    // Plugins habilitados — para mostrar nombre/descripción en el grupo
+    $pluginMeta = [];
+    if (class_exists('QuetzalPluginManager')) {
+      foreach (QuetzalPluginManager::getInstance()->getEnabled() as $pl) {
+        $pluginMeta[$pl['name']] = [
+          'icon'        => 'ri-plug-fill',
+          'description' => $pl['description'] ?? '',
+        ];
+        // Si el plugin trae permisos vía plugin.json, también poblar slugToPlugin
+        if (!empty($pl['permissions']) && is_array($pl['permissions'])) {
+          foreach ($pl['permissions'] as $p) {
+            if (!empty($p['slug'])) $slugToPlugin[$p['slug']] = $pl['name'];
+          }
+        }
+      }
+    }
+
+    // Heurística adicional: si el slug del permiso empieza con un nombre de
+    // plugin habilitado seguido de '.' o '-', asumir que pertenece a ese plugin
+    // (cubre permisos viejos sin metadata).
+    $heuristicPrefixes = array_keys($pluginMeta);
+    foreach ($allPerms as $p) {
+      if (isset($slugToPlugin[$p['slug']])) continue;
+      foreach ($heuristicPrefixes as $name) {
+        $low = strtolower($name);
+        if (stripos($p['slug'], $low . '.') === 0 || stripos($p['slug'], $low . '-') === 0) {
+          $slugToPlugin[$p['slug']] = $name; break;
+        }
+      }
+    }
+
+    foreach ($allPerms as $p) {
+      $plugin = $slugToPlugin[$p['slug']] ?? null;
+      if ($plugin && isset($pluginMeta[$plugin])) {
+        if (!isset($groups[$plugin])) {
+          $groups[$plugin] = $pluginMeta[$plugin] + ['perms' => []];
+        }
+        $groups[$plugin]['perms'][] = $p;
+      } else {
+        $groups['Core']['perms'][] = $p;
+      }
+    }
+
+    // Quitar grupos vacíos (Core puede quedar vacío si todo es de plugin)
+    foreach ($groups as $k => $g) {
+      if (empty($g['perms'])) unset($groups[$k]);
+    }
+    return $groups;
   }
 
   function post_role_editar()
@@ -1550,9 +1628,12 @@ class adminController extends Controller implements ControllerInterface
 
     $permissions = Model::query($sql, $params) ?: [];
 
+    $permsByPlugin = $this->_groupPermissionsByPlugin($permissions);
+
     $this->setTitle('Permisos');
-    $this->addToData('permissions', $permissions);
-    $this->addToData('filters'    , ['q' => $q]);
+    $this->addToData('permissions',   $permissions);
+    $this->addToData('permsByPlugin', $permsByPlugin);
+    $this->addToData('filters',       ['q' => $q]);
     $this->setView('permisos/index');
     $this->render();
   }
