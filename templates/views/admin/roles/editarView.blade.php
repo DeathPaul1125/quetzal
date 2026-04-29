@@ -50,14 +50,16 @@
       </div>
     @else
       @php
-        // Acciones estándar (lo definimos en el controller adminController::PERM_ACTIONS)
-        // Replicamos el orden y los iconos acá para no acoplar la vista al controller.
+        // Acciones estándar (sincronizado con adminController::PERM_ACTIONS)
         $actions = [
-          'ver'       => ['label' => 'Ver',       'icon' => 'ri-eye-line',         'color' => 'text-slate-500'],
-          'crear'     => ['label' => 'Crear',     'icon' => 'ri-add-line',         'color' => 'text-emerald-500'],
-          'editar'    => ['label' => 'Editar',    'icon' => 'ri-edit-line',        'color' => 'text-amber-500'],
-          'eliminar'  => ['label' => 'Eliminar',  'icon' => 'ri-delete-bin-line',  'color' => 'text-red-500'],
-          'descargar' => ['label' => 'Descargar', 'icon' => 'ri-download-2-line',  'color' => 'text-blue-500'],
+          'ver'       => ['label' => 'Ver',         'icon' => 'ri-eye-line',         'color' => 'text-slate-500'],
+          'crear'     => ['label' => 'Crear',       'icon' => 'ri-add-line',         'color' => 'text-emerald-500'],
+          'editar'    => ['label' => 'Editar',      'icon' => 'ri-edit-line',        'color' => 'text-amber-500'],
+          'eliminar'  => ['label' => 'Eliminar',    'icon' => 'ri-delete-bin-line',  'color' => 'text-red-500'],
+          'descargar' => ['label' => 'Descargar',   'icon' => 'ri-download-2-line',  'color' => 'text-blue-500'],
+          'aprobar'   => ['label' => 'Aprobar',     'icon' => 'ri-shield-check-line','color' => 'text-violet-500'],
+          'admin'     => ['label' => 'Administrar', 'icon' => 'ri-shield-star-line', 'color' => 'text-fuchsia-500'],
+          'acceso'    => ['label' => 'Acceso',      'icon' => 'ri-login-box-line',   'color' => 'text-cyan-500'],
         ];
       @endphp
 

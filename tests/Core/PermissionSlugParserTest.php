@@ -111,11 +111,30 @@ return [
     q_assert_contains('facturas', $r['recurso']);
   },
 
-  // ============= No reconocidos =============
-  'admin-access (legacy): no parsea como acción estándar' => function () use ($parse) {
-    $r = $parse('admin-access');
-    q_assert_eq(null, $r['accion_key']);
+  // ============= Acciones legacy reconocidas (anular, emitir, ajustar, access, admin) =============
+  'admin-access → acción acceso' => function () use ($parse) {
+    q_assert_eq('acceso', $parse('admin-access')['accion_key']);
   },
+  'invpro-access → acceso' => function () use ($parse) {
+    q_assert_eq('acceso', $parse('invpro-access')['accion_key']);
+  },
+  'woo-admin → administrar' => function () use ($parse) {
+    q_assert_eq('admin', $parse('woo-admin')['accion_key']);
+  },
+  'facturador.facturas.anular → eliminar' => function () use ($parse) {
+    q_assert_eq('eliminar', $parse('facturador.facturas.anular')['accion_key']);
+  },
+  'facturador.facturas.emitir → crear' => function () use ($parse) {
+    q_assert_eq('crear', $parse('facturador.facturas.emitir')['accion_key']);
+  },
+  'facturador.stock.ajustar → editar' => function () use ($parse) {
+    q_assert_eq('editar', $parse('facturador.stock.ajustar')['accion_key']);
+  },
+  'facturador.fel.configurar → editar' => function () use ($parse) {
+    q_assert_eq('editar', $parse('facturador.fel.configurar')['accion_key']);
+  },
+
+  // ============= No reconocidos (después de extender) =============
   'slug vacío → null/null' => function () use ($parse) {
     $r = $parse('');
     q_assert_eq(null, $r['recurso']);

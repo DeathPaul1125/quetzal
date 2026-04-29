@@ -1445,11 +1445,46 @@ class adminController extends Controller implements ControllerInterface
    * de la matriz de permisos.
    */
   public const PERM_ACTIONS = [
-    'ver'       => ['label' => 'Ver',       'icon' => 'ri-eye-line',          'syns' => ['ver','read','view','list','show','index','consultar','leer']],
-    'crear'     => ['label' => 'Crear',     'icon' => 'ri-add-line',          'syns' => ['crear','create','new','add','store','registrar','agregar']],
-    'editar'    => ['label' => 'Editar',    'icon' => 'ri-edit-line',         'syns' => ['editar','update','edit','modificar','actualizar','write']],
-    'eliminar'  => ['label' => 'Eliminar',  'icon' => 'ri-delete-bin-line',   'syns' => ['eliminar','delete','remove','borrar','destroy']],
-    'descargar' => ['label' => 'Descargar', 'icon' => 'ri-download-2-line',   'syns' => ['descargar','download','export','exportar','print','imprimir','pdf','excel','csv']],
+    'ver'        => ['label' => 'Ver',          'icon' => 'ri-eye-line',          'syns' => ['ver','read','view','list','show','index','consultar','leer']],
+    'crear'      => ['label' => 'Crear',        'icon' => 'ri-add-line',          'syns' => ['crear','create','new','add','store','registrar','agregar','emitir','generar']],
+    'editar'     => ['label' => 'Editar',       'icon' => 'ri-edit-line',         'syns' => ['editar','update','edit','modificar','actualizar','write','ajustar','configurar']],
+    'eliminar'   => ['label' => 'Eliminar',     'icon' => 'ri-delete-bin-line',   'syns' => ['eliminar','delete','remove','borrar','destroy','anular']],
+    'descargar'  => ['label' => 'Descargar',    'icon' => 'ri-download-2-line',   'syns' => ['descargar','download','export','exportar','print','imprimir','pdf','excel','csv']],
+    'aprobar'    => ['label' => 'Aprobar',      'icon' => 'ri-shield-check-line', 'syns' => ['aprobar','approve','autorizar','validar']],
+    'admin'      => ['label' => 'Administrar',  'icon' => 'ri-shield-star-line',  'syns' => ['admin','administrar','manage','administer','superuser']],
+    'acceso'     => ['label' => 'Acceso',       'icon' => 'ri-login-box-line',    'syns' => ['access','acceso','accede','login']],
+  ];
+
+  /**
+   * Alias de prefijos → nombre del plugin habilitado. Usado para mapear
+   * slugs como `woo-access`, `invpro-admin`, `mobile-access` al plugin
+   * correcto cuando el slug no usa el nombre completo.
+   */
+  private const PLUGIN_PREFIX_ALIASES = [
+    'invpro'        => 'InventarioPro',
+    'woo'           => 'WooCommerce',
+    'mobile'        => 'MobileApp',
+    'dashboardplus' => 'DashboardPlus',
+    'execdash'      => 'ExecutiveDashboard',
+    'qos'           => 'QuetzalOS',
+    'qjump'         => 'QuetzalJump',
+    'shopify'       => 'Shopify',
+    'caex'          => 'Caex',
+    'envios'        => 'Envios',
+    'audit'         => 'Audit',
+    'pacifiko'      => 'Pacifiko',
+    'kanban'        => 'Kanban',
+    'crm'           => 'CRM',
+    'rrhh'          => 'RRHH',
+    'taller'        => 'Taller',
+    'reservas'      => 'Reservas',
+    'restaurante'   => 'Restaurante',
+    'hospital'      => 'Hospital',
+    'clinicadental' => 'ClinicaDental',
+    'clinped'       => 'ClinicaPediatrica',
+    'togas'         => 'Togas',
+    'ecommerce'     => 'Ecommerce',
+    'facturador'    => 'Facturador',
   ];
 
   /**
@@ -1536,16 +1571,25 @@ class adminController extends Controller implements ControllerInterface
       }
     }
 
-    // Heurística adicional: si el slug del permiso empieza con un nombre de
-    // plugin habilitado seguido de '.' o '-', asumir que pertenece a ese plugin
-    // (cubre permisos viejos sin metadata).
-    $heuristicPrefixes = array_keys($pluginMeta);
+    // Heurística: mapear el slug a un plugin por prefijo (full name + alias).
     foreach ($allPerms as $p) {
       if (isset($slugToPlugin[$p['slug']])) continue;
-      foreach ($heuristicPrefixes as $name) {
+      $slug = strtolower((string)$p['slug']);
+
+      // 1. Match por nombre completo del plugin
+      foreach (array_keys($pluginMeta) as $name) {
         $low = strtolower($name);
-        if (stripos($p['slug'], $low . '.') === 0 || stripos($p['slug'], $low . '-') === 0) {
-          $slugToPlugin[$p['slug']] = $name; break;
+        if (str_starts_with($slug, $low . '.') || str_starts_with($slug, $low . '-') || str_starts_with($slug, $low . '_')) {
+          $slugToPlugin[$p['slug']] = $name;
+          continue 2;
+        }
+      }
+      // 2. Match por alias (woo → WooCommerce, invpro → InventarioPro, etc)
+      foreach (self::PLUGIN_PREFIX_ALIASES as $alias => $pluginName) {
+        if (!isset($pluginMeta[$pluginName])) continue;  // solo si el plugin está habilitado
+        if (str_starts_with($slug, $alias . '.') || str_starts_with($slug, $alias . '-') || str_starts_with($slug, $alias . '_')) {
+          $slugToPlugin[$p['slug']] = $pluginName;
+          break;
         }
       }
     }
@@ -1621,20 +1665,56 @@ class adminController extends Controller implements ControllerInterface
       $mgr = new QuetzalRoleManager($role['slug']);
       $currentPerms = array_map(fn($p) => $p['slug'], $mgr->getPermissions() ?: []);
 
+      // Validar y limpiar los slugs recibidos del form
+      $cleanSlugs = [];
+      $invalidSlugs = [];
+      $missingFromDb = [];
+      foreach ($permSlugs as $rawSlug) {
+        $slugTry = strtolower(trim((string)$rawSlug));
+        if ($slugTry === '') continue;
+        if (!preg_match('/^[a-z0-9_\-\.]+$/', $slugTry)) {
+          $invalidSlugs[] = $rawSlug;
+          continue;
+        }
+        // Verificar que el permiso existe en BD ANTES de intentar asignarlo
+        if (!Model::list('quetzal_permisos', ['slug' => $slugTry], 1)) {
+          $missingFromDb[] = $slugTry;
+          continue;
+        }
+        $cleanSlugs[] = $slugTry;
+      }
+
       // Quitar los que ya no están
+      $denied = 0; $denyFailed = [];
       foreach ($currentPerms as $current) {
-        if (!in_array($current, $permSlugs, true)) {
-          $mgr->deny($current);
+        if (!in_array($current, $cleanSlugs, true)) {
+          if ($mgr->deny($current)) $denied++;
+          else $denyFailed[] = $current;
         }
       }
       // Agregar los nuevos
-      foreach ($permSlugs as $slugToAdd) {
+      $allowed = 0; $allowFailed = [];
+      foreach ($cleanSlugs as $slugToAdd) {
         if (!in_array($slugToAdd, $currentPerms, true)) {
-          $mgr->allow($slugToAdd);
+          if ($mgr->allow($slugToAdd)) $allowed++;
+          else $allowFailed[] = $slugToAdd;
         }
       }
 
-      Flasher::success('Role actualizado con éxito.');
+      // Reporte detallado: si algo falló, decirle al usuario QUÉ falló
+      $problems = [];
+      if (!empty($invalidSlugs))   $problems[] = sprintf('%d slug(s) con caracteres inválidos', count($invalidSlugs));
+      if (!empty($missingFromDb))  $problems[] = sprintf('%d permiso(s) no existen en BD: %s', count($missingFromDb), implode(', ', array_slice($missingFromDb, 0, 5)));
+      if (!empty($allowFailed))    $problems[] = sprintf('%d no se pudieron asignar: %s', count($allowFailed), implode(', ', array_slice($allowFailed, 0, 5)));
+      if (!empty($denyFailed))     $problems[] = sprintf('%d no se pudieron remover: %s', count($denyFailed), implode(', ', array_slice($denyFailed, 0, 5)));
+
+      $summary = sprintf('Role actualizado: +%d asignados · -%d removidos.', $allowed, $denied);
+      if (empty($problems)) {
+        Flasher::success($summary);
+      } else {
+        Flasher::new($summary . ' Problemas: ' . implode(' · ', $problems), 'warning');
+      }
+
       Redirect::to('admin/ver_role/' . $id);
 
     } catch (Exception $e) {
