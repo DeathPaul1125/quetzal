@@ -3048,13 +3048,21 @@ function remove_dir(string $dir)
  */
 function can_user(string $role, string $permission)
 {
-	try {
-		$role= new QuetzalRoleManager($role);
-		return $role->can($permission);
+	// Cache por-request del QuetzalRoleManager: cada instancia ejecuta 2 queries
+	// (role + permisos), y user_can() suele invocarse decenas de veces por
+	// request al iterar items de sidebar/tiles. Sin caché esto era N+1 y en
+	// hosting compartido lento causaba timeouts de 30s.
+	static $managers = [];
 
-	} catch (Exception $e) {
-		return false;
+	if (!array_key_exists($role, $managers)) {
+		try {
+			$managers[$role] = new QuetzalRoleManager($role);
+		} catch (Exception $e) {
+			$managers[$role] = null;
+		}
 	}
+
+	return $managers[$role] !== null && $managers[$role]->can($permission);
 }
 
 /**
