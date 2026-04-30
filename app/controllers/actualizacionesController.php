@@ -38,7 +38,7 @@ class actualizacionesController extends Controller implements ControllerInterfac
     $this->addToData('available', $available['manifest']);
     $this->addToData('checkError', $available['error']);
     $this->addToData('backups',   $backups);
-    $this->setView('actualizaciones/index');
+    $this->setView('index');
     $this->render();
   }
 
