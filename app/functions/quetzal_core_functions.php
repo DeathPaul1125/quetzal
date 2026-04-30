@@ -271,6 +271,47 @@ function save_option(string $option, $val)
 }
 
 /**
+ * Lee el archivo quetzal.json en la raíz del proyecto y devuelve sus campos.
+ * Es la fuente de verdad de la versión instalada (la actualiza el updater).
+ * Si el archivo no existe o es inválido, cae a APP_VERSION del .env.
+ *
+ * @return array{version:string, released_at:?string, min_php:?string, channel:string}
+ */
+function quetzal_version_info(): array
+{
+	static $cache = null;
+	if ($cache !== null) return $cache;
+
+	$path = (defined('ROOT') ? ROOT : __DIR__ . '/../../') . 'quetzal.json';
+	$fallback = [
+		'version'     => defined('SITE_VERSION') ? (string) SITE_VERSION : '0.0.0',
+		'released_at' => null,
+		'min_php'     => null,
+		'channel'     => 'stable',
+	];
+
+	if (!is_file($path)) return $cache = $fallback;
+
+	$json = json_decode((string) @file_get_contents($path), true);
+	if (!is_array($json) || empty($json['version'])) return $cache = $fallback;
+
+	return $cache = [
+		'version'     => (string) $json['version'],
+		'released_at' => isset($json['released_at']) ? (string) $json['released_at'] : null,
+		'min_php'     => isset($json['min_php'])     ? (string) $json['min_php']     : null,
+		'channel'     => isset($json['channel'])     ? (string) $json['channel']     : 'stable',
+	];
+}
+
+/**
+ * Atajo: devuelve solo la versión instalada (string).
+ */
+function quetzal_version(): string
+{
+	return quetzal_version_info()['version'];
+}
+
+/**
  * Paleta por defecto del tema: colores inspirados en Guatemala (celeste
  * bandera + acentos del quetzal). Cada valor puede sobrescribirse por
  * una opción en DB bajo la key "theme_<clave>".
