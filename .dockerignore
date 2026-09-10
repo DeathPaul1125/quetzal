@@ -1,0 +1,6 @@
+.git
+.claude
+docs
+tests
+app/vendor
+app/config/.env
